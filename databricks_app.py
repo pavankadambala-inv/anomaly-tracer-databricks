@@ -27,15 +27,47 @@ if str(_current_dir) not in sys.path:
     sys.path.insert(0, str(_current_dir))
 
 # WORKAROUND: Patch gradio_client to fix API schema bug
-# This prevents TypeError: argument of type 'bool' is not iterable
+# This prevents APIInfoParseError: Cannot parse schema True/False
 try:
     import gradio_client.utils as gradio_utils
+    
+    # Patch get_type to handle non-dict schemas
     _original_get_type = gradio_utils.get_type
     def _patched_get_type(schema):
         if not isinstance(schema, dict):
             return "Any"
         return _original_get_type(schema)
     gradio_utils.get_type = _patched_get_type
+    
+    # Patch _json_schema_to_python_type to handle boolean schemas
+    _original_json_schema_to_python_type = gradio_utils._json_schema_to_python_type
+    def _patched_json_schema_to_python_type(schema, defs=None):
+        if schema is True:
+            return "Any"
+        if schema is False:
+            return "None"
+        if not isinstance(schema, dict):
+            return "Any"
+        try:
+            return _original_json_schema_to_python_type(schema, defs)
+        except Exception:
+            return "Any"
+    gradio_utils._json_schema_to_python_type = _patched_json_schema_to_python_type
+    
+    # Also patch the main function
+    def _patched_json_schema_to_python_type_main(schema):
+        if schema is True:
+            return "Any"
+        if schema is False:
+            return "None"
+        if not isinstance(schema, dict):
+            return "Any"
+        try:
+            return _patched_json_schema_to_python_type(schema, schema.get("$defs"))
+        except Exception:
+            return "Any"
+    gradio_utils.json_schema_to_python_type = _patched_json_schema_to_python_type_main
+    
     print("✓ Applied Gradio API schema patch")
 except Exception as e:
     print(f"Note: Could not patch gradio_client: {e}")
