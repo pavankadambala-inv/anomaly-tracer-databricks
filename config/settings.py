@@ -55,11 +55,13 @@ class Settings:
             self.ffmpeg_nvenc_path = Path.home() / ".local" / "bin" / "ffmpeg-nvenc"
         
         # Load Databricks settings from environment if not set
+        # Support both DATABRICKS_SERVER_HOSTNAME and DATABRICKS_HOST (Databricks Apps provides the latter)
         if self.databricks_server_hostname is None:
-            self.databricks_server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME")
+            self.databricks_server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME") or os.getenv("DATABRICKS_HOST")
         if self.databricks_http_path is None:
             self.databricks_http_path = os.getenv("DATABRICKS_HTTP_PATH")
         if self.databricks_access_token is None:
+            # Databricks Apps provides client credentials, not a token
             self.databricks_access_token = os.getenv("DATABRICKS_TOKEN")
     
     @property

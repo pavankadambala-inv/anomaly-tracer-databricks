@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from databricks import sql
-from databricks.sdk.core import Config
+from databricks.sdk import WorkspaceClient
 
 # Ensure parent directory is in path
 _parent = Path(__file__).resolve().parent.parent
@@ -20,39 +20,80 @@ def get_databricks_connection():
     """
     Get authenticated Databricks SQL connection.
     
-    Uses Databricks authentication from environment or ~/.databrickscfg
+    Uses Databricks authentication from environment.
+    In Databricks Apps, uses DATABRICKS_HOST and OAuth client credentials automatically.
     
     Returns:
         Databricks SQL connection
     """
     # Get connection parameters from settings or environment
-    server_hostname = settings.databricks_server_hostname or os.getenv("DATABRICKS_SERVER_HOSTNAME")
+    # DATABRICKS_HOST is provided by Databricks Apps
+    server_hostname = (
+        settings.databricks_server_hostname 
+        or os.getenv("DATABRICKS_SERVER_HOSTNAME") 
+        or os.getenv("DATABRICKS_HOST")
+    )
     http_path = settings.databricks_http_path or os.getenv("DATABRICKS_HTTP_PATH")
     access_token = settings.databricks_access_token or os.getenv("DATABRICKS_TOKEN")
     
-    if not server_hostname or not http_path:
+    if not server_hostname:
         raise ValueError(
-            "Databricks connection parameters not configured. "
-            "Please set databricks_server_hostname and databricks_http_path in settings "
-            "or set DATABRICKS_SERVER_HOSTNAME and DATABRICKS_HTTP_PATH environment variables."
+            "Databricks server hostname not configured. "
+            "Please set DATABRICKS_SERVER_HOSTNAME or DATABRICKS_HOST environment variable."
         )
     
-    # Create connection
-    connection = sql.connect(
-        server_hostname=server_hostname,
-        http_path=http_path,
-        access_token=access_token,
-        # Alternatively, use credentials=lambda: access_token if access_token else None
-    )
+    if not http_path:
+        raise ValueError(
+            "Databricks HTTP path not configured. "
+            "Please set DATABRICKS_HTTP_PATH environment variable. "
+            "Example: /sql/1.0/warehouses/your-warehouse-id"
+        )
     
-    return connection
+    # Try different authentication methods
+    try:
+        if access_token:
+            # Use token authentication
+            print(f"Connecting with token authentication...")
+            connection = sql.connect(
+                server_hostname=server_hostname,
+                http_path=http_path,
+                access_token=access_token,
+            )
+        else:
+            # Use OAuth (client credentials) - Databricks Apps provides these automatically
+            # DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET are set by Databricks Apps
+            print(f"Connecting with OAuth (Databricks SDK)...")
+            connection = sql.connect(
+                server_hostname=server_hostname,
+                http_path=http_path,
+                # Let databricks-sql-connector use SDK authentication
+                credentials_provider=_get_credentials_provider(),
+            )
+        return connection
+    except Exception as e:
+        print(f"Connection error: {e}")
+        raise
 
 
-def get_databricks_config() -> Config:
+def _get_credentials_provider():
+    """Get credentials provider using Databricks SDK."""
+    from databricks.sdk.core import Config, oauth_service_principal
+    
+    config = Config()
+    
+    # Use OAuth service principal if client credentials are available
+    if config.client_id and config.client_secret:
+        return oauth_service_principal(config)
+    
+    # Fall back to default credentials
+    return None
+
+
+def get_workspace_client() -> WorkspaceClient:
     """
-    Get Databricks SDK config for file operations.
+    Get Databricks Workspace client for API operations.
     
     Returns:
-        Databricks SDK Config object
+        Databricks WorkspaceClient
     """
-    return Config()
+    return WorkspaceClient()
