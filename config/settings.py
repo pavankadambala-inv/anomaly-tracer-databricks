@@ -24,11 +24,10 @@ class Settings:
     databricks_access_token: Optional[str] = None
     
     # Catalog and schema for Unity Catalog
-    catalog_name: str = "stage_cv_catalog"
+    catalog_name: str = "stg_cv_catalog"
     schema_name: str = "bronze"
     
     # Table names (without catalog.schema prefix)
-    # UPDATE THESE to match your actual table names!
     stage1_table: str = "gemini_stage1_detections"
     stage2_table: str = "stage2_vlm_inferences"
     
