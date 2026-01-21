@@ -1,15 +1,26 @@
 """Services module for business logic."""
 
-from ..config import settings
-from .camera_config import CameraConfigService, camera_config_service
-from .media_service import MediaService, media_service
+import sys
+from pathlib import Path
+
+# Add parent to path
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+# Use absolute imports
+import config.settings as settings_module
+settings = settings_module.settings
+
+from services.camera_config import CameraConfigService, camera_config_service
+from services.media_service import MediaService, media_service
 
 # Import the appropriate query service based on platform
 if settings.platform == "databricks":
-    from .databricks_query_service import DatabricksQueryService as QueryService
-    from .databricks_query_service import databricks_query_service as query_service
+    from services.databricks_query_service import DatabricksQueryService as QueryService
+    from services.databricks_query_service import databricks_query_service as query_service
 else:
-    from .query_service import QueryService, query_service
+    from services.query_service import QueryService, query_service
 
 __all__ = [
     "CameraConfigService",

@@ -8,13 +8,16 @@ _parent = Path(__file__).resolve().parent.parent
 if str(_parent) not in sys.path:
     sys.path.insert(0, str(_parent))
 
-from config.settings import settings
-from .ffmpeg import setup_ffmpeg_nvenc, get_ffmpeg_cmd, has_nvenc
+# Use absolute import
+import config.settings as settings_module
+settings = settings_module.settings
+
+from infrastructure.ffmpeg import setup_ffmpeg_nvenc, get_ffmpeg_cmd, has_nvenc
 
 # Import appropriate clients based on platform
 if settings.platform == "databricks":
-    from .databricks_client import get_databricks_connection, get_databricks_config
-    from .databricks_storage import get_storage_client
+    from infrastructure.databricks_client import get_databricks_connection, get_databricks_config
+    from infrastructure.databricks_storage import get_storage_client
     
     __all__ = [
         "get_databricks_connection",
@@ -25,8 +28,8 @@ if settings.platform == "databricks":
         "has_nvenc",
     ]
 else:
-    from .bigquery_client import get_bigquery_client
-    from .gcs_client import get_storage_client
+    from infrastructure.bigquery_client import get_bigquery_client
+    from infrastructure.gcs_client import get_storage_client
     
     __all__ = [
         "get_bigquery_client",
