@@ -5,3 +5,5 @@ command:
 env:
   - name: DATABRICKS_HTTP_PATH
     value: "/sql/1.0/warehouses/1066550024e48b7a"
+  - name: GRADIO_ROOT_PATH
+    value: ""

@@ -144,13 +144,22 @@ def main():
     print(f"Launching app on port {port}...")
     print("=" * 60)
     
+    # For Databricks Apps behind reverse proxy
+    # Queue is needed for proper request handling
+    app.queue()
+    
     app.launch(
         server_name="0.0.0.0",
         server_port=port,
         share=False,
         show_error=True,
-        # For Databricks Apps, we might need to set root_path
-        root_path=os.getenv("GRADIO_ROOT_PATH", None)
+        show_api=False,  # Disable API docs to avoid schema serialization issues
+        # For Databricks Apps behind reverse proxy
+        root_path=os.getenv("GRADIO_ROOT_PATH", ""),
+        # Additional settings for Databricks
+        favicon_path=None,
+        ssl_verify=False,
+        quiet=False,
     )
 
 
