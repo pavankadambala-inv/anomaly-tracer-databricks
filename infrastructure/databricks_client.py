@@ -72,11 +72,24 @@ def get_databricks_connection():
         elif client_id and client_secret:
             # Method 2: Use OAuth M2M (machine-to-machine) authentication
             print(f"  Using: OAuth M2M authentication")
+            print(f"  Client ID: {client_id[:8]}...")
+            
+            # Create credentials provider function for OAuth M2M
+            def credential_provider():
+                from databricks.sdk.core import Config, oauth_service_principal
+                config = Config(
+                    host=f"https://{server_hostname}",
+                    client_id=client_id,
+                    client_secret=client_secret,
+                )
+                # Get OAuth token using service principal
+                oauth_provider = oauth_service_principal(config)
+                return oauth_provider()
+            
             connection = sql.connect(
                 server_hostname=server_hostname,
                 http_path=http_path,
-                client_id=client_id,
-                client_secret=client_secret,
+                credentials_provider=credential_provider,
             )
         else:
             # Method 3: Try default SDK authentication
@@ -90,6 +103,8 @@ def get_databricks_connection():
         return connection
     except Exception as e:
         print(f"  ✗ Connection error: {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 
