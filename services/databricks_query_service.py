@@ -57,10 +57,16 @@ class DatabricksQueryService:
         LIMIT 100
         """
         
+        print(f"DEBUG get_available_farms: Executing query for date={date_str}")
+        print(f"DEBUG get_available_farms: Table={settings.full_stage1_table}")
+        
         try:
             with self.connection.cursor() as cursor:
+                print(f"DEBUG get_available_farms: Cursor obtained, executing...")
                 cursor.execute(query)
+                print(f"DEBUG get_available_farms: Query executed, fetching results...")
                 results = cursor.fetchall()
+                print(f"DEBUG get_available_farms: Fetched {len(results)} farms")
                 
                 farms = []
                 for row in results:
@@ -284,10 +290,13 @@ class DatabricksQueryService:
         
         print(f"DEBUG query_stage1_stage2_linked: date={date_str}, farm={farm_id}, camera={camera_id}")
         print(f"DEBUG query_stage1_stage2_linked: where_clause={where_clause}")
+        print(f"DEBUG query_stage1_stage2_linked: Executing complex query...")
         
         try:
             with self.connection.cursor() as cursor:
+                print(f"DEBUG query_stage1_stage2_linked: Cursor obtained, executing query...")
                 cursor.execute(query)
+                print(f"DEBUG query_stage1_stage2_linked: Query executed, fetching results...")
                 
                 # Fetch column names
                 columns = [desc[0] for desc in cursor.description]
