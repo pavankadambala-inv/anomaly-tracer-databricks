@@ -26,6 +26,20 @@ _current_dir = Path(__file__).resolve().parent
 if str(_current_dir) not in sys.path:
     sys.path.insert(0, str(_current_dir))
 
+# WORKAROUND: Patch gradio_client to fix API schema bug
+# This prevents TypeError: argument of type 'bool' is not iterable
+try:
+    import gradio_client.utils as gradio_utils
+    _original_get_type = gradio_utils.get_type
+    def _patched_get_type(schema):
+        if not isinstance(schema, dict):
+            return "Any"
+        return _original_get_type(schema)
+    gradio_utils.get_type = _patched_get_type
+    print("✓ Applied Gradio API schema patch")
+except Exception as e:
+    print(f"Note: Could not patch gradio_client: {e}")
+
 from config import settings
 from infrastructure import setup_ffmpeg_nvenc
 from services import camera_config_service
@@ -147,6 +161,15 @@ def main():
     # For Databricks Apps behind reverse proxy
     # Queue is needed for proper request handling
     app.queue()
+    
+    # WORKAROUND: Prevent Gradio from checking localhost accessibility
+    # by monkey-patching the networking check
+    try:
+        import gradio.networking as networking
+        networking.url_ok = lambda url: True
+        print("✓ Applied Gradio networking patch")
+    except Exception as e:
+        print(f"Note: Could not patch networking: {e}")
     
     app.launch(
         server_name="0.0.0.0",
