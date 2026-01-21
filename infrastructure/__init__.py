@@ -9,9 +9,7 @@ if str(_parent) not in sys.path:
     sys.path.insert(0, str(_parent))
 
 # Use absolute import
-import config.settings as settings_module
-settings = settings_module.settings
-
+from config.settings import settings
 from infrastructure.ffmpeg import setup_ffmpeg_nvenc, get_ffmpeg_cmd, has_nvenc
 
 # Import appropriate clients based on platform
