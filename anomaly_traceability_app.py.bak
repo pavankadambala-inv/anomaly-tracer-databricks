@@ -1,0 +1,1227 @@
+#!/usr/bin/env python3
+"""
+CV Inference Traceability Dashboard
+
+A Gradio web application to query and visualize Stage 1 and Stage 2 
+inference results from BigQuery, with frame and video display.
+
+Usage:
+    python cv_traceability_app.py
+    
+Then open http://localhost:7860 in your browser.
+"""
+
+import atexit
+import os
+import io
+import json
+import shutil
+import subprocess
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional, Tuple, List, Dict, Any
+
+import yaml
+
+# Track temp files for cleanup on exit
+_temp_video_files: list = []
+_temp_gif_files: list = []
+
+
+def cleanup_temp_files():
+    """Clean up all temporary video and GIF files on exit."""
+    total = len(_temp_video_files) + len(_temp_gif_files)
+    if total > 0:
+        print(f"\n🧹 Cleaning up {total} temporary files...")
+        for filepath in _temp_video_files + _temp_gif_files:
+            try:
+                if os.path.exists(filepath):
+                    os.unlink(filepath)
+            except Exception:
+                pass
+        _temp_video_files.clear()
+        _temp_gif_files.clear()
+        print("✓ Cleanup complete")
+
+
+# Register cleanup on exit
+atexit.register(cleanup_temp_files)
+
+import gradio as gr
+import pandas as pd
+from PIL import Image
+from google.cloud import bigquery
+from google.cloud import storage
+from google.auth import default
+from google.auth.transport import requests as google_requests
+
+
+
+# =============================================================================
+# FFmpeg Setup with NVENC Support
+# =============================================================================
+
+FFMPEG_NVENC_PATH = Path.home() / ".local" / "bin" / "ffmpeg-nvenc"
+HAS_NVENC = False  # Will be set during setup
+
+
+def setup_ffmpeg_nvenc() -> bool:
+    """
+    Check for and setup ffmpeg with NVENC support.
+    Downloads a static build if NVENC-capable ffmpeg is not available.
+    Supports older drivers by downloading compatible FFmpeg builds.
+    """
+    global HAS_NVENC
+    
+    # Check if we already have our custom ffmpeg and it works
+    if FFMPEG_NVENC_PATH.exists():
+        try:
+            test_cmd = [
+                str(FFMPEG_NVENC_PATH), "-y", "-f", "lavfi", "-i", "color=c=black:s=256x256", 
+                "-t", "0.1", "-c:v", "h264_nvenc", "-f", "null", "-"
+            ]
+            if subprocess.run(test_cmd, capture_output=True).returncode == 0:
+                print(f"✓ Using FFmpeg with NVENC from {FFMPEG_NVENC_PATH}")
+                HAS_NVENC = True
+                return True
+        except Exception:
+            pass
+    
+    # Check for NVIDIA GPU
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0: return False
+        driver_version = result.stdout.strip()
+        major_version = int(driver_version.split(".")[0])
+    except Exception:
+        return False
+    
+    # Download compatible version
+    try:
+        FFMPEG_NVENC_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if major_version >= 570:
+            url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz"
+        else:
+            # Compatible with driver 550
+            url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-07-31-12-50/ffmpeg-N-116475-g43f702a253-linux64-gpl.tar.xz"
+            
+        print(f"⬇ Downloading compatible FFmpeg for GPU encoding...")
+        temp_dir = tempfile.mkdtemp()
+        archive = os.path.join(temp_dir, "ffmpeg.tar.xz")
+        subprocess.run(["curl", "-sL", "-o", archive, url], check=True)
+        subprocess.run(["tar", "-xf", archive, "-C", temp_dir], check=True)
+        
+        for item in Path(temp_dir).rglob("ffmpeg"):
+            if item.is_file() and not item.is_symlink():
+                shutil.copy2(item, FFMPEG_NVENC_PATH)
+                FFMPEG_NVENC_PATH.chmod(0o755)
+                break
+        shutil.rmtree(temp_dir)
+        HAS_NVENC = True
+        return True
+    except Exception as e:
+        print(f"⚠ FFmpeg setup failed: {e}")
+        return False
+
+
+def get_ffmpeg_cmd() -> str:
+    return str(FFMPEG_NVENC_PATH) if HAS_NVENC and FFMPEG_NVENC_PATH.exists() else "ffmpeg"
+
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+PROJECT_ID = "invisible-animal-welfare"
+DATASET_ID = "cv_logs"
+STAGE1_TABLE = "gemini_stage1_detections"
+STAGE2_TABLE = "stage2_vlm_inferences"
+
+# GCS bucket for frames/videos
+GCS_BUCKET = "animal-welfare-staging"
+
+# Signed URL expiration (in seconds)
+SIGNED_URL_EXPIRATION = 3600  # 1 hour
+
+# Camera config directory
+CAMERA_CONFIG_DIR = Path(__file__).parent / "camera_config"
+
+# =============================================================================
+# Camera Configuration Mapping
+# =============================================================================
+
+# Global cache for camera mapping
+_camera_mapping: Dict[str, Dict[str, str]] = {}
+_farm_mapping: Dict[str, str] = {}
+
+
+def load_camera_config() -> Tuple[Dict[str, Dict[str, str]], Dict[str, str]]:
+    """
+    Load camera configuration from YAML files and build mapping dictionaries.
+    
+    Returns:
+        Tuple of (camera_mapping, farm_mapping) where:
+        - camera_mapping: {camera_uuid: {'name': camera_name, 'farm_name': farm_name, 'farm_id': farm_uuid}}
+        - farm_mapping: {farm_uuid: farm_name}
+    """
+    global _camera_mapping, _farm_mapping
+    
+    # Return cached if already loaded
+    if _camera_mapping:
+        return _camera_mapping, _farm_mapping
+    
+    camera_mapping = {}
+    farm_mapping = {}
+    
+    if not CAMERA_CONFIG_DIR.exists():
+        print(f"Warning: Camera config directory not found: {CAMERA_CONFIG_DIR}")
+        return camera_mapping, farm_mapping
+    
+    # Load all YAML config files
+    for config_file in CAMERA_CONFIG_DIR.glob("*.yaml"):
+        try:
+            with open(config_file, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            if not config or 'farms' not in config:
+                continue
+            
+            for farm in config.get('farms', []):
+                farm_name = farm.get('name', 'Unknown Farm')
+                farm_uuid = farm.get('uuid', '')
+                
+                if farm_uuid:
+                    farm_mapping[farm_uuid] = farm_name
+                
+                for camera in farm.get('cameras', []):
+                    camera_uuid = camera.get('uuid', '')
+                    camera_name = camera.get('name', 'Unknown Camera')
+                    
+                    if camera_uuid:
+                        camera_mapping[camera_uuid] = {
+                            'name': camera_name,
+                            'farm_name': farm_name,
+                            'farm_id': farm_uuid
+                        }
+        except Exception as e:
+            print(f"Error loading config file {config_file}: {e}")
+    
+    _camera_mapping = camera_mapping
+    _farm_mapping = farm_mapping
+    
+    print(f"✓ Loaded {len(camera_mapping)} cameras from {len(farm_mapping)} farms")
+    return camera_mapping, farm_mapping
+
+
+def get_camera_display_name(camera_id: str) -> str:
+    """Get display name for a camera ID (UUID)."""
+    camera_mapping, _ = load_camera_config()
+    if camera_id in camera_mapping:
+        return camera_mapping[camera_id]['name']
+    return camera_id  # Return original ID if not found
+
+
+def get_farm_display_name(farm_id: str) -> str:
+    """Get display name for a farm ID (UUID)."""
+    _, farm_mapping = load_camera_config()
+    if farm_id in farm_mapping:
+        return farm_mapping[farm_id]
+    return farm_id  # Return original ID if not found
+
+
+def get_camera_info(camera_id: str) -> Dict[str, str]:
+    """Get full camera info including farm name for a camera ID."""
+    camera_mapping, _ = load_camera_config()
+    if camera_id in camera_mapping:
+        return camera_mapping[camera_id]
+    return {'name': camera_id, 'farm_name': 'Unknown', 'farm_id': ''}
+
+
+# =============================================================================
+# BigQuery Client
+# =============================================================================
+
+def get_bigquery_client() -> bigquery.Client:
+    """Get authenticated BigQuery client."""
+    return bigquery.Client(project=PROJECT_ID)
+
+
+def get_storage_client() -> storage.Client:
+    """Get authenticated GCS client."""
+    return storage.Client(project=PROJECT_ID)
+
+
+# =============================================================================
+# GCS Signed URL Generation
+# =============================================================================
+
+def generate_signed_url(gcs_uri: str, expiration_seconds: int = SIGNED_URL_EXPIRATION) -> Optional[str]:
+    """
+    Generate a signed URL for a GCS object.
+    
+    Args:
+        gcs_uri: GCS URI (gs://bucket/path/to/object)
+        expiration_seconds: URL expiration time in seconds
+        
+    Returns:
+        Signed URL string or None if error
+    """
+    if not gcs_uri or not gcs_uri.startswith("gs://"):
+        return None
+    
+    try:
+        # Parse GCS URI
+        parts = gcs_uri.replace("gs://", "").split("/", 1)
+        if len(parts) != 2:
+            return None
+        bucket_name, blob_name = parts
+        
+        # Get storage client and generate signed URL
+        client = get_storage_client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        
+        # Check if blob exists (optional - can be slow)
+        # if not blob.exists():
+        #     return None
+        
+        # Generate signed URL
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(seconds=expiration_seconds),
+            method="GET"
+        )
+        
+        return url
+        
+    except Exception as e:
+        print(f"Error generating signed URL for {gcs_uri}: {e}")
+        return None
+
+
+def download_frame_as_image(gcs_uri: str) -> Optional[Image.Image]:
+    """
+    Download frame from GCS and return as PIL Image for Gradio display.
+    
+    Args:
+        gcs_uri: GCS URI of the frame
+        
+    Returns:
+        PIL Image or None if error
+    """
+    if not gcs_uri or not gcs_uri.startswith("gs://"):
+        return None
+    
+    try:
+        parts = gcs_uri.replace("gs://", "").split("/", 1)
+        if len(parts) != 2:
+            return None
+        bucket_name, blob_name = parts
+        
+        client = get_storage_client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        
+        image_bytes = blob.download_as_bytes()
+        return Image.open(io.BytesIO(image_bytes))
+        
+    except Exception as e:
+        print(f"Error downloading frame from {gcs_uri}: {e}")
+        return None
+
+
+def create_animated_gif_from_frames(frame_uris: List[str], fps: int = 3) -> Optional[str]:
+    """
+    Download all frames from GCS and create an animated GIF.
+    
+    Args:
+        frame_uris: List of GCS URIs for frames
+        fps: Frames per second for the GIF (default 3)
+        
+    Returns:
+        Path to temporary GIF file or None if error
+    """
+    if not frame_uris:
+        return None
+    
+    try:
+        client = get_storage_client()
+        frames: List[Image.Image] = []
+        
+        print(f"Downloading {len(frame_uris)} frames for GIF...")
+        
+        for uri in frame_uris:
+            if not uri or not uri.startswith("gs://"):
+                continue
+            
+            try:
+                parts = uri.replace("gs://", "").split("/", 1)
+                if len(parts) != 2:
+                    continue
+                bucket_name, blob_name = parts
+                
+                bucket = client.bucket(bucket_name)
+                blob = bucket.blob(blob_name)
+                
+                image_bytes = blob.download_as_bytes()
+                img = Image.open(io.BytesIO(image_bytes))
+                
+                # Convert to RGB if necessary (GIF doesn't support RGBA well)
+                if img.mode in ('RGBA', 'P'):
+                    img = img.convert('RGB')
+                
+                frames.append(img)
+            except Exception as e:
+                print(f"Warning: Failed to download frame {uri}: {e}")
+                continue
+        
+        if not frames:
+            print("No frames downloaded successfully")
+            return None
+        
+        # Create temporary GIF file
+        temp_gif = tempfile.NamedTemporaryFile(suffix=".gif", delete=False)
+        
+        # Calculate duration per frame in milliseconds
+        duration_ms = int(1000 / fps)
+        
+        # Save as animated GIF
+        frames[0].save(
+            temp_gif.name,
+            save_all=True,
+            append_images=frames[1:] if len(frames) > 1 else [],
+            duration=duration_ms,
+            loop=0  # Infinite loop
+        )
+        
+        # Track for cleanup
+        _temp_gif_files.append(temp_gif.name)
+        
+        print(f"✓ Created GIF with {len(frames)} frames at {fps} fps")
+        return temp_gif.name
+        
+    except Exception as e:
+        print(f"Error creating GIF: {e}")
+        return None
+
+
+def download_video_to_temp(gcs_uri: str) -> Optional[str]:
+    """
+    Download video from GCS to a temporary file for Gradio display.
+    
+    Args:
+        gcs_uri: GCS URI of the video
+        
+    Returns:
+        Path to temporary video file or None if error
+    """
+    if not gcs_uri or not gcs_uri.startswith("gs://"):
+        return None
+    
+    try:
+        parts = gcs_uri.replace("gs://", "").split("/", 1)
+        if len(parts) != 2:
+            return None
+        bucket_name, blob_name = parts
+        
+        client = get_storage_client()
+        bucket = client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        
+        # Check if blob exists
+        if not blob.exists():
+            print(f"Video not found: {gcs_uri}")
+            return None
+        
+        # Download video
+        temp_download = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        print(f"Downloading video...")
+        blob.download_to_filename(temp_download.name)
+        
+        # Convert HEVC to H.264 for browser compatibility
+        temp_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        ffmpeg = get_ffmpeg_cmd()
+        
+        result = None
+        
+        if HAS_NVENC:
+            # Try GPU encoding first (much faster)
+            print(f"Converting HEVC to H.264 (GPU)...")
+            gpu_cmd = [
+                ffmpeg, "-y", "-hwaccel", "cuda", "-i", temp_download.name,
+                "-c:v", "h264_nvenc", "-preset", "p1", "-b:v", "5M",
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                "-f", "mp4", "-loglevel", "error",
+                temp_output.name
+            ]
+            result = subprocess.run(gpu_cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"GPU encoding failed, falling back to CPU...")
+        
+        if result is None or result.returncode != 0:
+            # Fall back to CPU encoding
+            print(f"Converting HEVC to H.264 (CPU)...")
+            cpu_cmd = [
+                ffmpeg, "-y", "-i", temp_download.name,
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                "-f", "mp4", "-loglevel", "warning",
+                temp_output.name
+            ]
+            result = subprocess.run(cpu_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"FFmpeg error: {result.stderr}")
+            _temp_video_files.append(temp_download.name)
+            return temp_download.name
+        
+        os.unlink(temp_download.name)
+        print(f"Video ready: {temp_output.name} ({os.path.getsize(temp_output.name)} bytes)")
+        _temp_video_files.append(temp_output.name)
+        return temp_output.name
+        
+    except Exception as e:
+        print(f"Error downloading video from {gcs_uri}: {e}")
+        return None
+
+
+# =============================================================================
+# BigQuery Queries
+# =============================================================================
+
+def get_available_farms(date_str: str) -> List[Tuple[str, str]]:
+    """
+    Get list of farm IDs that have data on the given date.
+    
+    Returns:
+        List of tuples (display_name, farm_id) for dropdown choices
+    """
+    client = get_bigquery_client()
+    _, farm_mapping = load_camera_config()
+    
+    query = f"""
+    SELECT DISTINCT farm_id
+    FROM `{PROJECT_ID}.{DATASET_ID}.{STAGE1_TABLE}`
+    WHERE DATE(processing_timestamp) = @target_date
+      AND farm_id IS NOT NULL
+    ORDER BY farm_id
+    LIMIT 100
+    """
+    
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("target_date", "DATE", date_str)
+        ]
+    )
+    
+    try:
+        results = client.query(query, job_config=job_config).result()
+        farms = []
+        for row in results:
+            farm_id = row.farm_id
+            farm_name = farm_mapping.get(farm_id, farm_id)
+            farms.append((farm_name, farm_id))
+        # Sort by display name
+        farms.sort(key=lambda x: x[0])
+        return [("All", "All")] + farms
+    except Exception as e:
+        print(f"Error fetching farms: {e}")
+        return [("All", "All")]
+
+
+def get_available_cameras(date_str: str, farm_id: Optional[str] = None) -> List[Tuple[str, str]]:
+    """
+    Get list of camera IDs that have data on the given date, optionally filtered by farm.
+    
+    Returns:
+        List of tuples (display_name, camera_id) for dropdown choices
+    """
+    client = get_bigquery_client()
+    camera_mapping, _ = load_camera_config()
+    
+    # Extract actual farm_id from tuple if needed
+    actual_farm_id = farm_id[1] if isinstance(farm_id, tuple) else farm_id
+    
+    farm_filter = "AND farm_id = @farm_id" if actual_farm_id and actual_farm_id != "All" else ""
+    
+    query = f"""
+    SELECT DISTINCT camera_id
+    FROM `{PROJECT_ID}.{DATASET_ID}.{STAGE1_TABLE}`
+    WHERE DATE(processing_timestamp) = @target_date
+      AND camera_id IS NOT NULL
+      {farm_filter}
+    ORDER BY camera_id
+    LIMIT 100
+    """
+    
+    params = [bigquery.ScalarQueryParameter("target_date", "DATE", date_str)]
+    if actual_farm_id and actual_farm_id != "All":
+        params.append(bigquery.ScalarQueryParameter("farm_id", "STRING", actual_farm_id))
+    
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
+    
+    try:
+        results = client.query(query, job_config=job_config).result()
+        cameras = []
+        for row in results:
+            camera_id = row.camera_id
+            camera_info = camera_mapping.get(camera_id, {})
+            camera_name = camera_info.get('name', camera_id)
+            cameras.append((camera_name, camera_id))
+        # Sort by display name
+        cameras.sort(key=lambda x: x[0])
+        return [("All", "All")] + cameras
+    except Exception as e:
+        print(f"Error fetching cameras: {e}")
+        return [("All", "All")]
+
+
+def query_stage1_stage2_linked(
+    date_str: str,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    farm_id: Optional[str] = None,
+    camera_id: Optional[str] = None,
+    should_forward_only: bool = False,
+    limit: int = 50
+) -> pd.DataFrame:
+    """
+    Query Stage 1 and Stage 2 results with LEFT JOIN.
+    
+    Returns linked results where Stage 1 is always present,
+    and Stage 2 may be NULL for events that weren't forwarded.
+    """
+    client = get_bigquery_client()
+    
+    # Build dynamic filters
+    filters = []
+    params = [bigquery.ScalarQueryParameter("target_date", "DATE", date_str)]
+    
+    # Add time range filter
+    if start_time:
+        filters.append("TIME(s1.stage1_timestamp) >= PARSE_TIME('%H:%M:%S', @start_time)")
+        st = start_time if start_time.count(':') == 2 else start_time + ":00"
+        params.append(bigquery.ScalarQueryParameter("start_time", "STRING", st))
+    
+    if end_time:
+        filters.append("TIME(s1.stage1_timestamp) <= PARSE_TIME('%H:%M:%S', @end_time)")
+        et = end_time if end_time.count(':') == 2 else end_time + ":59"
+        params.append(bigquery.ScalarQueryParameter("end_time", "STRING", et))
+    
+    if farm_id and farm_id != "All":
+        filters.append("s1.farm_id = @farm_id")
+        params.append(bigquery.ScalarQueryParameter("farm_id", "STRING", farm_id))
+    
+    if camera_id and camera_id != "All":
+        filters.append("s1.camera_id = @camera_id")
+        params.append(bigquery.ScalarQueryParameter("camera_id", "STRING", camera_id))
+    
+    if should_forward_only:
+        filters.append("s1.stage1_should_forward = true")
+    
+    where_clause = " AND ".join(filters) if filters else "1=1"
+    
+    query = f"""
+    WITH stage1_data AS (
+      SELECT 
+        session_id,
+        farm_id,
+        camera_id,
+        processing_timestamp AS stage1_timestamp,
+        highest_probability_category AS stage1_category,
+        highest_probability_value AS stage1_confidence,
+        should_forward AS stage1_should_forward,
+        frame_uris,
+        frame_uris[SAFE_OFFSET(0)] AS trigger_frame_uri,
+        -- Extract linkage keys from trigger frame
+        -- blk_file = block number + frame offset (e.g., 042_0000015)
+        REGEXP_EXTRACT(frame_uris[SAFE_OFFSET(0)], r"/(\\d{{3}}_\\d{{7}})_") AS blk_file,
+        REGEXP_EXTRACT(frame_uris[SAFE_OFFSET(0)], r"_(\\d{{4}}-\\d{{2}}-\\d{{2}}T\\d{{2}}:\\d{{2}}:\\d{{2}})") AS frame_timestamp_key,
+        probability_animal_husbandry,
+        probability_down_cow,
+        probability_quick_movements,
+        probability_no_event,
+        -- Stage 1 raw response from Gemini
+        TO_JSON_STRING(gemini_raw_response) AS stage1_raw_response
+      FROM `{PROJECT_ID}.{DATASET_ID}.{STAGE1_TABLE}`
+      WHERE DATE(processing_timestamp) = @target_date
+    ),
+    
+    stage2_data AS (
+      SELECT 
+        inference_id AS stage2_inference_id,
+        camera_id,
+        inference_timestamp AS stage2_timestamp,
+        classification AS stage2_classification,
+        max_probability_score AS stage2_confidence,
+        should_forward AS stage2_should_forward,
+        video_gcs_path,
+        file_name AS video_filename,
+        -- Extract linkage keys from video filename
+        -- blk_file = block number + frame offset (e.g., 042_0000015)
+        REGEXP_EXTRACT(file_name, r"^(\\d{{3}}_\\d{{7}})_") AS blk_file,
+        REGEXP_EXTRACT(file_name, r"_(\\d{{4}}-\\d{{2}}-\\d{{2}}T\\d{{2}}:\\d{{2}}:\\d{{2}})") AS video_timestamp_key,
+        -- Stage 2 raw response from first model vote
+        model_votes[SAFE_OFFSET(0)].raw_response AS stage2_raw_response
+      FROM `{PROJECT_ID}.{DATASET_ID}.{STAGE2_TABLE}`
+      WHERE DATE(inference_timestamp) BETWEEN DATE_SUB(@target_date, INTERVAL 2 DAY) 
+                                          AND DATE_ADD(@target_date, INTERVAL 2 DAY)
+    )
+    
+    SELECT 
+      -- Stage 1 Info
+      s1.session_id,
+      s1.farm_id,
+      s1.camera_id,
+      s1.stage1_timestamp,
+      s1.stage1_category,
+      s1.stage1_confidence,
+      s1.stage1_should_forward,
+      s1.frame_uris,
+      s1.trigger_frame_uri,
+      ARRAY_LENGTH(s1.frame_uris) AS frame_count,
+      s1.probability_animal_husbandry,
+      s1.probability_down_cow,
+      s1.probability_quick_movements,
+      s1.probability_no_event,
+      s1.stage1_raw_response,
+      
+      -- Stage 2 Info (may be NULL)
+      s2.stage2_inference_id,
+      s2.stage2_timestamp,
+      s2.stage2_classification,
+      s2.stage2_confidence,
+      s2.stage2_should_forward,
+      s2.video_gcs_path,
+      s2.video_filename,
+      s2.stage2_raw_response,
+      
+      -- Linkage keys
+      s1.blk_file,
+      s1.frame_timestamp_key AS event_timestamp,
+      
+      -- Derived video path (fallback if Stage 2 missing)
+      CASE 
+        WHEN s2.video_gcs_path IS NOT NULL THEN s2.video_gcs_path
+        ELSE REGEXP_REPLACE(
+          REGEXP_REPLACE(s1.trigger_frame_uri, r'frames-to-analyze', 'video-to-analyze'),
+          r'\\.jpg$', '.mp4'
+        )
+      END AS video_url_derived
+      
+    FROM stage1_data s1
+    LEFT JOIN stage2_data s2
+      ON s1.camera_id = s2.camera_id
+      AND s1.blk_file = s2.blk_file            -- Match on block number + frame offset
+      AND s1.frame_timestamp_key = s2.video_timestamp_key
+    
+    WHERE {where_clause}
+    
+    ORDER BY s1.stage1_timestamp DESC
+    LIMIT {limit}
+    """
+    
+    job_config = bigquery.QueryJobConfig(query_parameters=params)
+    
+    try:
+        results = client.query(query, job_config=job_config).result()
+        df = results.to_dataframe()
+        return df
+    except Exception as e:
+        print(f"Error querying data: {e}")
+        return pd.DataFrame()
+
+
+# =============================================================================
+# Gradio UI Components
+# =============================================================================
+
+def format_results_for_display(df: pd.DataFrame) -> pd.DataFrame:
+    """Format DataFrame for display in Gradio table."""
+    if df.empty:
+        return df
+    
+    # Load camera config for name mapping
+    camera_mapping, farm_mapping = load_camera_config()
+    
+    # Create a copy to work with
+    result = df.copy()
+    
+    # Map farm_id to farm name
+    if 'farm_id' in result.columns:
+        result['Farm'] = result['farm_id'].apply(
+            lambda x: farm_mapping.get(x, x) if pd.notna(x) else "N/A"
+        )
+    
+    # Map camera_id to camera name
+    if 'camera_id' in result.columns:
+        result['Camera'] = result['camera_id'].apply(
+            lambda x: camera_mapping.get(x, {}).get('name', x) if pd.notna(x) else "N/A"
+        )
+    
+    # Select and rename columns for display
+    display_cols = {
+        'Farm': 'Farm',
+        'Camera': 'Camera',
+        'stage1_timestamp': 'Stage 1 Time',
+        'event_timestamp': 'Event Timestamp',
+        'stage1_category': 'S1 Category',
+        'stage1_confidence': 'S1 Conf',
+        'stage1_should_forward': 'S1 Forward',
+        'stage2_classification': 'S2 Class',
+        'stage2_confidence': 'S2 Conf',
+        'stage2_should_forward': 'S2 Forward'
+    }
+    
+    result = result[[c for c in display_cols.keys() if c in result.columns]].copy()
+    result.columns = [display_cols.get(c, c) for c in result.columns]
+    
+    # Format confidence values
+    for col in ['S1 Conf', 'S2 Conf']:
+        if col in result.columns:
+            result[col] = result[col].apply(lambda x: f"{x:.3f}" if pd.notna(x) else "N/A")
+    
+    # Format timestamps
+    for col in ['Stage 1 Time']:
+        if col in result.columns:
+            result[col] = result[col].apply(
+                lambda x: x.strftime("%Y-%m-%d %H:%M:%S") if pd.notna(x) else "N/A"
+            )
+    
+    # Format booleans
+    for col in ['S1 Forward', 'S2 Forward']:
+        if col in result.columns:
+            result[col] = result[col].apply(lambda x: "N/A" if pd.isna(x) else ("✓" if x else "✗"))
+    
+    return result
+
+
+def update_farms(date_str: str):
+    """Update farm dropdown based on selected date."""
+    farms = get_available_farms(date_str)
+    return gr.Dropdown(choices=farms, value="All")
+
+
+def update_cameras(date_str: str, farm_id: str):
+    """Update camera dropdown based on selected date and farm."""
+    cameras = get_available_cameras(date_str, farm_id)
+    return gr.Dropdown(choices=cameras, value="All")
+
+
+# =============================================================================
+# Main Application Logic
+# =============================================================================
+
+# Global state to store full query results
+_query_results: pd.DataFrame = pd.DataFrame()
+
+
+def run_query(
+    date_str: str,
+    start_time: str,
+    end_time: str,
+    farm_id: str,
+    camera_id: str,
+    should_forward_only: bool
+) -> Tuple[pd.DataFrame, str]:
+    """Run the query and return formatted results."""
+    global _query_results
+    
+    # Load camera config for display names
+    camera_mapping, farm_mapping = load_camera_config()
+    
+    # Extract actual IDs (handle both string and tuple formats from dropdown)
+    actual_farm_id = farm_id if farm_id != "All" else None
+    actual_camera_id = camera_id if camera_id != "All" else None
+    
+    try:
+        df = query_stage1_stage2_linked(
+            date_str=date_str,
+            start_time=start_time.strip() if start_time.strip() else None,
+            end_time=end_time.strip() if end_time.strip() else None,
+            farm_id=actual_farm_id,
+            camera_id=actual_camera_id,
+            should_forward_only=should_forward_only,
+            limit=100
+        )
+        
+        _query_results = df
+        
+        # Build filter summary for status with display names
+        filter_parts = [f"Date: {date_str}"]
+        if start_time.strip():
+            filter_parts.append(f"From: {start_time}")
+        if end_time.strip():
+            filter_parts.append(f"To: {end_time}")
+        if actual_farm_id:
+            farm_display = farm_mapping.get(actual_farm_id, actual_farm_id)
+            filter_parts.append(f"Farm: {farm_display}")
+        if actual_camera_id:
+            camera_info = camera_mapping.get(actual_camera_id, {})
+            camera_display = camera_info.get('name', actual_camera_id)
+            filter_parts.append(f"Camera: {camera_display}")
+        filter_summary = " | ".join(filter_parts)
+        
+        if df.empty:
+            return pd.DataFrame(), f"No results found. Filters: {filter_summary}"
+        
+        display_df = format_results_for_display(df)
+        status = f"Found {len(df)} results | {filter_summary}"
+        
+        return display_df, status
+        
+    except Exception as e:
+        return pd.DataFrame(), f"Error: {str(e)}"
+
+
+def get_row_details(evt: gr.SelectData) -> Tuple[Optional[str], Optional[str], str]:
+    """
+    Get frame GIF and video details for selected row.
+    
+    Returns:
+        Tuple of (gif_path, video_path, details_text)
+    """
+    global _query_results
+    
+    if _query_results.empty:
+        return None, None, "No data available"
+    
+    try:
+        row_idx = evt.index[0]
+        row = _query_results.iloc[row_idx]
+        
+        # Get camera and farm display names
+        camera_id = row.get('camera_id', '')
+        farm_id = row.get('farm_id', '')
+        camera_info = get_camera_info(camera_id) if camera_id else {'name': 'N/A', 'farm_name': 'N/A'}
+        farm_name = get_farm_display_name(farm_id) if farm_id else 'N/A'
+        
+        # Build details text (plain text format)
+        details = []
+        details.append(f"Session ID: {row.get('session_id', 'N/A')}")
+        details.append("")
+        details.append("═══ Location ═══")
+        details.append(f"  Farm: {farm_name}")
+        details.append(f"  Farm ID: {farm_id or 'N/A'}")
+        details.append(f"  Camera: {camera_info['name']}")
+        details.append(f"  Camera ID: {camera_id or 'N/A'}")
+        details.append("")
+        details.append("═══ Stage 1 Results ═══")
+        details.append(f"  Category: {row.get('stage1_category', 'N/A')}")
+        details.append(f"  Confidence: {row.get('stage1_confidence', 'N/A'):.3f}" if pd.notna(row.get('stage1_confidence')) else "  Confidence: N/A")
+        s1_forward = row.get('stage1_should_forward')
+        details.append(f"  Should Forward: {'N/A' if pd.isna(s1_forward) else ('Yes ✓' if s1_forward else 'No ✗')}")
+        details.append(f"  Frame Count: {row.get('frame_count', 'N/A')}")
+        details.append(f"  Timestamp: {row.get('stage1_timestamp', 'N/A')}")
+        details.append("")
+        
+        if pd.notna(row.get('stage2_inference_id')):
+            details.append("═══ Stage 2 Results ═══")
+            details.append(f"  Classification: {row.get('stage2_classification', 'N/A')}")
+            details.append(f"  Confidence: {row.get('stage2_confidence', 'N/A'):.3f}" if pd.notna(row.get('stage2_confidence')) else "  Confidence: N/A")
+            s2_forward = row.get('stage2_should_forward')
+            details.append(f"  Should Forward: {'N/A' if pd.isna(s2_forward) else ('Yes ✓' if s2_forward else 'No ✗')}")
+        else:
+            details.append("═══ Stage 2 Results ═══")
+            details.append("  (No Stage 2 processing - event not forwarded)")
+        
+        # Add raw responses section
+        details.append("")
+        details.append("═══ Stage 1 Raw Response ═══")
+        s1_raw = row.get('stage1_raw_response')
+        if pd.notna(s1_raw) and s1_raw:
+            try:
+                # Pretty print the JSON
+                s1_json = json.loads(s1_raw)
+                details.append(json.dumps(s1_json, indent=2))
+            except (json.JSONDecodeError, TypeError):
+                details.append(str(s1_raw)[:2000])  # Fallback to string, truncated
+        else:
+            details.append("  (No raw response available)")
+        
+        details.append("")
+        details.append("═══ Stage 2 Raw Response ═══")
+        s2_raw = row.get('stage2_raw_response')
+        if pd.notna(s2_raw) and s2_raw:
+            try:
+                # Pretty print the JSON
+                s2_json = json.loads(s2_raw)
+                details.append(json.dumps(s2_json, indent=2))
+            except (json.JSONDecodeError, TypeError):
+                details.append(str(s2_raw)[:2000])  # Fallback to string, truncated
+        else:
+            details.append("  (No raw response available)")
+        
+        details_text = "\n".join(details)
+        
+        # Create animated GIF from all Stage 1 frames
+        frame_uris = row.get('frame_uris')
+        gif_path = None
+        # Handle numpy arrays, lists, or None - avoid ambiguous truth check
+        if frame_uris is not None and len(frame_uris) > 0:
+            # Convert to list if it's a numpy array
+            frame_list = list(frame_uris) if hasattr(frame_uris, '__iter__') else []
+            if frame_list:
+                gif_path = create_animated_gif_from_frames(frame_list, fps=3)
+        
+        # Download video only if Stage 2 exists (has actual video)
+        video_path = None
+        stage2_id = row.get('stage2_inference_id')
+        video_gcs = row.get('video_gcs_path')
+        print(f"DEBUG: stage2_inference_id={stage2_id}, video_gcs_path={video_gcs}")
+        if pd.notna(stage2_id) and pd.notna(video_gcs):
+            video_path = download_video_to_temp(video_gcs)
+        
+        return gif_path, video_path, details_text
+        
+    except Exception as e:
+        return None, None, f"Error loading details: {str(e)}"
+
+
+# =============================================================================
+# Gradio App
+# =============================================================================
+
+def create_app():
+    """Create and configure the Gradio application."""
+    
+    # Get today's date as default
+    today = datetime.now().strftime("%Y-%m-%d")
+    
+    with gr.Blocks(
+        title="CV Inference Traceability Dashboard",
+        theme=gr.themes.Soft(
+            primary_hue="blue",
+            secondary_hue="gray",
+        ),
+        css="""
+        .results-table {
+            font-size: 12px;
+        }
+        #details-box textarea,
+        #details-box .wrap textarea,
+        #details-box > div > textarea {
+            background: transparent !important;
+            color: #ffffff !important;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            padding: 16px !important;
+            border: none !important;
+            line-height: 1.6 !important;
+        }
+        """
+    ) as app:
+        
+        gr.Markdown("""
+        # 🐄 CV Inference Traceability Dashboard
+        
+        Query and visualize **Stage 1** (frame detection) and **Stage 2** (video classification) 
+        inference results from BigQuery. Click on a row to view the trigger frame and video.
+        """)
+        
+        # =====================================================================
+        # Filters Section
+        # =====================================================================
+        with gr.Row():
+            with gr.Column(scale=1):
+                date_picker = gr.Textbox(
+                    label="📅 Date (YYYY-MM-DD)",
+                    value=today,
+                    placeholder="2026-01-14"
+                )
+            with gr.Column(scale=1):
+                start_time = gr.Textbox(
+                    label="🕐 Start Time (HH:MM)",
+                    value="",
+                    placeholder="e.g. 08:00 (leave empty for all)"
+                )
+            with gr.Column(scale=1):
+                end_time = gr.Textbox(
+                    label="🕐 End Time (HH:MM)",
+                    value="",
+                    placeholder="e.g. 17:00 (leave empty for all)"
+                )
+            with gr.Column(scale=1):
+                farm_dropdown = gr.Dropdown(
+                    label="🏠 Farm ID",
+                    choices=["All"],
+                    value="All",
+                    interactive=True
+                )
+            with gr.Column(scale=1):
+                camera_dropdown = gr.Dropdown(
+                    label="📷 Camera ID",
+                    choices=["All"],
+                    value="All",
+                    interactive=True
+                )
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                forward_only = gr.Checkbox(
+                    label="📤 Only Forwarded (should_forward=true)",
+                    value=False
+                )
+        
+        with gr.Row():
+            load_filters_btn = gr.Button("🔄 Load Farms/Cameras", variant="secondary")
+            query_btn = gr.Button("🔍 Run Query", variant="primary")
+        
+        status_text = gr.Textbox(label="Status", interactive=False, max_lines=1)
+        
+        # =====================================================================
+        # Results Section
+        # =====================================================================
+        gr.Markdown("## 📊 Query Results")
+        gr.Markdown("*Click on a row to view the trigger frame and video*")
+        
+        results_table = gr.Dataframe(
+            headers=["Farm", "Camera", "Stage 1 Time", "Event Timestamp",
+                     "S1 Category", "S1 Conf", "S1 Forward", 
+                     "S2 Class", "S2 Conf", "S2 Forward"],
+            interactive=False,
+            wrap=True,
+            elem_classes=["results-table"]
+        )
+        
+        # =====================================================================
+        # Media Display Section
+        # =====================================================================
+        gr.Markdown("## 🎬 Media & Details")
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("### 📸 Stage 1 Frames (Animated)")
+                frame_display = gr.Image(
+                    label=None,
+                    show_label=False,
+                    type="filepath",
+                    height=400,
+                    interactive=False
+                )
+            
+            with gr.Column(scale=1):
+                gr.Markdown("### 🎥 Stage 2 Video")
+                video_display = gr.Video(
+                    label=None,
+                    show_label=False,
+                    height=400,
+                    autoplay=True,
+                    include_audio=True,
+                    interactive=False
+                )
+        
+        with gr.Row():
+            with gr.Column():
+                gr.Markdown("### 📋 Details")
+                details_display = gr.Textbox(
+                    value="Select a row from the results table to view details",
+                    label=None,
+                    show_label=False,
+                    lines=25,
+                    max_lines=50,
+                    interactive=False,
+                    elem_id="details-box"
+                )
+        
+        # =====================================================================
+        # Event Handlers
+        # =====================================================================
+        
+        # Load filters button
+        def load_filters(date_str):
+            farms = get_available_farms(date_str)
+            cameras = get_available_cameras(date_str)
+            return (
+                gr.Dropdown(choices=farms, value="All"),
+                gr.Dropdown(choices=cameras, value="All"),
+                f"Loaded {len(farms)-1} farms, {len(cameras)-1} cameras for {date_str}"
+            )
+        
+        load_filters_btn.click(
+            fn=load_filters,
+            inputs=[date_picker],
+            outputs=[farm_dropdown, camera_dropdown, status_text]
+        )
+        
+        # Update cameras when farm changes
+        def update_cameras_on_farm_change(date_str, farm_id):
+            cameras = get_available_cameras(date_str, farm_id)
+            return gr.Dropdown(choices=cameras, value="All")
+        
+        farm_dropdown.change(
+            fn=update_cameras_on_farm_change,
+            inputs=[date_picker, farm_dropdown],
+            outputs=[camera_dropdown]
+        )
+        
+        # Run query button
+        query_btn.click(
+            fn=run_query,
+            inputs=[date_picker, start_time, end_time, farm_dropdown, camera_dropdown, 
+                    forward_only],
+            outputs=[results_table, status_text]
+        )
+        
+        # Row selection - show frame and video
+        results_table.select(
+            fn=get_row_details,
+            outputs=[frame_display, video_display, details_display]
+        )
+        
+        # =====================================================================
+        # Footer
+        # =====================================================================
+        gr.Markdown("""
+        ---
+        ### ℹ️ About
+        
+        This dashboard queries the following BigQuery tables:
+        - **Stage 1**: `invisible-animal-welfare.cv_logs.gemini_stage1_detections`
+        - **Stage 2**: `invisible-animal-welfare.cv_logs.stage2_vlm_inferences`
+        
+        Results are linked using the composite key: `(camera_id, blk_file, timestamp)` where `blk_file` = block number + frame offset (e.g., 042_0000015)
+        
+        **Note**: Stage 2 columns show "N/A" for events that weren't forwarded for video analysis.
+        """)
+    
+    return app
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
+if __name__ == "__main__":
+    print("="*60)
+    print("CV Inference Traceability Dashboard")
+    print("="*60)
+    print(f"Project: {PROJECT_ID}")
+    print(f"Dataset: {DATASET_ID}")
+    print()
+    
+    # Load camera configuration
+    print("Loading camera configuration...")
+    load_camera_config()
+    print()
+    
+    # Setup ffmpeg with NVENC for fast video conversion
+    print("Checking FFmpeg setup...")
+    setup_ffmpeg_nvenc()
+    print()
+    
+    app = create_app()
+    app.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=False,
+        show_error=True
+    )

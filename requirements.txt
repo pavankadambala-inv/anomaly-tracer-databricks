@@ -1,0 +1,20 @@
+# Core dependencies for Databricks Gradio App
+gradio>=4.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Databricks SQL connector
+databricks-sql-connector>=3.0.0
+databricks-sdk>=0.18.0
+
+# Google Cloud Storage (for Unity Catalog table access)
+google-cloud-storage>=2.10.0
+
+# Image processing
+Pillow>=10.0.0
+
+# YAML parsing for camera config
+PyYAML>=6.0
+
+# Optional: For better BigQuery compatibility (if needed)
+# db-dtypes>=1.1.0

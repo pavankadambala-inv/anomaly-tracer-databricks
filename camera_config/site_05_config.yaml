@@ -1,0 +1,90 @@
+tenant:
+  uuid: 5e0566fe-cf43-4451-9a6a-3908355da223
+farms:
+  - name: "Fair Oaks Farms - Site 5"
+    description: ""
+    uuid: e38e2c88-00e8-4ed2-acee-6aa141f074e6
+    default_stream: 7ea9b53b-749e-420b-891b-43b238f6144e
+    time_zone: America/Chicago
+    streams:
+      - name: "Default Stream"
+        description: ""
+        uuid: 7ea9b53b-749e-420b-891b-43b238f6144e
+        deafult: true
+    cameras:
+      - name: "Maternity Calf Box"
+        description: ""
+        uuid: d5e859b6-736b-4930-9e71-90dcc7d4ffb3
+      - name: "Maternity Pen East"
+        description: ""
+        uuid: 333bd5a3-96f1-44fd-b491-6e33ccf8b4c3
+      - name: "Maternity Pen West"
+        description: ""
+        uuid: 43f80596-91e6-4662-a052-827a730b3deb
+      - name: "North West Feedlane 1"
+        description: ""
+        uuid: f68f1c7c-cd6b-42f6-b0ce-8286c5087811
+      - name: "North East Feedlane 1"
+        description: ""
+        uuid: 22ae38b5-8470-4afe-9157-a5705a5f72ab
+      - name: "South East Feedlane 1"
+        description: ""
+        uuid: 824de564-6ad4-4723-abdd-26ac6f496faa
+      - name: "South West Feedlane 1"
+        description: ""
+        uuid: cc6270d5-5354-49a5-acbc-6d951bc13d6b
+      - name: "Palpitation Rail"
+        description: ""
+        uuid: f18579b9-388e-45a4-aa2d-e06cb3e0022b
+      - name: "Post Dip"
+        description: ""
+        uuid: 52f19623-27ae-478f-817c-8175f61e994e
+      - name: "Push Pen Front"
+        description: ""
+        uuid: 0f64d93a-b3e9-4714-b4ff-58869f26e475
+      - name: "Pre Dip"
+        description: ""
+        uuid: 4ba53e3e-cf1b-4e15-b3df-6d6929a19aff
+      - name: "Sick Cow Pen"
+        description: ""
+        uuid: cb3082bb-b929-468b-b818-ceb3f394bf71
+      - name: "Truck Chute"
+        description: ""
+        uuid: b58ef573-8274-4b9d-96d1-fc09f5582228
+      - name: "Entry Exit Area"
+        description: ""
+        uuid: 159cad53-196a-4f31-a1d6-5d1630f498ed
+      - name: "Server Room"
+        description: ""
+        uuid: 26eedf1a-02da-41d0-a145-8a108a44b1dc
+        disabled: true
+      - name: "Push Pen Back"
+        description: ""
+        uuid: 265395ca-8aa7-4342-b9b2-5242d08ccb2a
+      - name: "Maternity Feedlane East"
+        description: ""
+        uuid: 1d2fae2b-1fef-41ac-93e8-d6b2ad2ff3e3
+      - name: "Maternity Feedlane West"
+        description: ""
+        uuid: 83f6a6cc-a6e1-4794-a8ea-9e404ca67789
+      - name: "South West Feedlane 2"
+        description: ""
+        uuid: d7ce6f98-6d62-4322-8f2a-fccb5716edf5
+      - name: "South East Feedlane 2"
+        description: ""
+        uuid: ad78695d-ab42-47df-8956-739614647536
+      - name: "North East Feedlane 2"
+        description: ""
+        uuid: d79c283d-787a-4e24-940b-a682eeeb5e4d
+      - name: "North West Feedlane 2"
+        description: ""
+        uuid: 7965ce5b-a250-47b2-9d8c-3b00d5c2d6d0
+      - name: "South Walkway"
+        description: ""
+        uuid: 9515ddf2-e4a7-47d0-b3e8-f9cdd68cd290
+      - name: "Maternity to North Walkway"
+        description: ""
+        uuid: bf49704c-3db4-45e6-80e7-5eb1f8478139
+      - name: "Sick Cow Pen #2"
+        description: ""
+        uuid: 0e63b551-e705-4dc7-ab80-1d5b4be54e32

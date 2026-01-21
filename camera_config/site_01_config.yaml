@@ -1,0 +1,193 @@
+tenant:
+  uuid: 5e0566fe-cf43-4451-9a6a-3908355da223
+farms:
+  - name: "Fair Oaks Farms - Site 1"
+    description: ""
+    uuid: 59020839-6c33-4de7-8ca7-24af7274fd21
+    default_stream: 7ea9b53b-749e-420b-891b-43b238f6144e
+    time_zone: America/Chicago
+    streams:
+      - name: "Default Stream"
+        description: ""
+        uuid: 7ea9b53b-749e-420b-891b-43b238f6144e
+        deafult: true
+    cameras:
+      - name: "Calf Boxes"
+        description: ""
+        uuid: 872a1c6a-c7a5-49b7-8a7f-bf4a924b7f06
+      - name: "Entry Exit Area"
+        description: ""
+        uuid: 1655910c-2d9e-452a-b3b6-936d5d6704ce
+      - name: "Herdsman Office"
+        description: ""
+        uuid: 89fd7ce1-1d51-4ce0-a03e-1d76ca419918
+        disabled: true
+      - name: "Hoof Trim"
+        description: ""
+        uuid: e64e205d-94fa-432c-89ec-656393333fd9
+      - name: "Load Chute"
+        description: ""
+        uuid: 257ee07e-b85f-4d6e-a535-fa88a0ba7f12
+      - name: "Maternity Calf Box West"
+        description: ""
+        uuid: 6e2c45f1-0340-428c-996e-3b651212375a
+      - name: "Maternity East Feedlane 1"
+        description: ""
+        uuid: b41de674-0a7f-4881-bc2a-93f74ede7789
+      - name: "Maternity East Feedlane 2"
+        description: ""
+        uuid: 9d02300e-bd88-4aef-bae7-4521e52a0cc5
+      - name: "Maternity East Feedlane 3"
+        description: ""
+        uuid: e15c9ad6-3564-49a7-8108-44f3a1b779b8
+      - name: "Maternity Freestall East (middle)"
+        description: ""
+        uuid: d4d2c042-68c9-4976-b61d-537a74431bfd
+      - name: "Maternity Freestall West (middle)"
+        description: ""
+        uuid: 8b8d2cf3-a1f6-4bf1-a624-febbcf9dd11b
+      - name: "Maternity Pen East"
+        description: ""
+        uuid: 110c2eda-6d9a-4619-aded-e5013a77a069
+      - name: "Maternity Pen West"
+        description: ""
+        uuid: 1c27e39a-c250-458c-905b-2b70a9e7266a
+      - name: "Maternity Walkway"
+        description: ""
+        uuid: 1a4e67e3-7069-415a-82ec-5490eb1ceb49
+        disabled: true
+      - name: "Maternity West Feedlane 1"
+        description: ""
+        uuid: 6a74ac8f-501b-41a0-b93b-ab26a6cb0a97
+      - name: "Maternity West Feedlane 2"
+        description: ""
+        uuid: 60d7c10d-50c7-45cc-b39d-1e24fd200bd2
+      - name: "Maternity West Feedlane 3"
+        description: ""
+        uuid: 71d8efcf-bbf9-469f-9950-02b796351edb
+      - name: "Milk Room"
+        description: ""
+        uuid: f13ce597-3149-41c2-8772-aec73558ce9c
+        disabled: true
+      - name: "North Barn Walkway East"
+        description: ""
+        uuid: e7df0491-213a-4708-87ed-0bc3389a30ee
+      - name: "North Barn Walkway West"
+        description: ""
+        uuid: 749453c5-f8f4-4b63-aeab-817b203280b6
+      - name: "North East Feedlane 1"
+        description: ""
+        uuid: ecad9f20-0221-4f72-87c1-a76dd1eba2b9
+      - name: "North East Feedlane 2"
+        description: ""
+        uuid: 37bdee9b-e120-4302-9bec-1e5041d88057
+      - name: "North East Feedlane 3"
+        description: ""
+        uuid: 4bff1e11-f812-4b8c-b901-f0ab76216d49
+      - name: "North East Feedlane 4"
+        description: ""
+        uuid: 11443a97-4fe4-45a0-97eb-f6592ab5240f
+      - name: "North West Feedlane 1"
+        description: ""
+        uuid: a971d173-947f-4b7d-a69f-5ce105301d7d
+      - name: "North West Feedlane 2"
+        description: ""
+        uuid: 6548404b-6583-4f95-a2db-790ce6aaf26b
+      - name: "North West Feedlane 3"
+        description: ""
+        uuid: fb47ebc3-cffb-4456-9d3d-6238624d7187
+      - name: "North West Feedlane 4"
+        description: ""
+        uuid: 713b87a6-727b-42eb-99ac-0284a68ff305
+      - name: "Palpatation Rail"
+        description: ""
+        uuid: e1cbe7c5-8f09-4d73-a7d7-1472a87b6894
+      - name: "Post Dip"
+        description: ""
+        uuid: 07d97477-d8b1-4e6b-ac88-9589e334402e
+      - name: "Pre Dip"
+        description: ""
+        uuid: d5db25b7-622c-4d4e-a1e6-c11de0b6f03f
+      - name: "Push Pen Back"
+        description: ""
+        uuid: f65d3ae1-c5c3-4a48-ab7f-d0b2c51f5bc7
+      - name: "Push Pen Front"
+        description: ""
+        uuid: ad44aa64-6017-4bea-b43a-705628417379
+      - name: "Rotary East"
+        description: ""
+        uuid: 75d526b5-8793-486c-8417-108de4b32dd3
+        disabled: true
+      - name: "Rotary Exit"
+        description: ""
+        uuid: b9e7e600-7772-43eb-bfad-faa57db66c65
+      - name: "Rotary Overview"
+        description: ""
+        uuid: dc9a0e63-b42f-4a22-871c-adbbbd16ff73
+      - name: "Rotary West"
+        description: ""
+        uuid: 6cd80046-26fb-42cd-be1b-2ea850d09328
+      - name: "Sick Cow Pen"
+        description: ""
+        uuid: d5b3e017-96be-41ef-952e-94100b4ae749
+      - name: "Sick Cow Pen 2"
+        description: ""
+        uuid: ffddf329-7cfa-455d-8385-70c4f81acd23
+      - name: "Sort Gates"
+        description: ""
+        uuid: c565c903-4194-49f1-a45c-95852bd392ea
+      - name: "South Barn Walkway East"
+        description: ""
+        uuid: f387f128-5d33-4652-ae92-d12be709de00
+      - name: "South Barn Walkway West"
+        description: ""
+        uuid: b5358d79-aa4b-44fe-bd27-8a7f375ff9f2
+      - name: "South East Feedlane 1"
+        description: ""
+        uuid: e18ab0ba-7788-46bc-b1de-043f0636f00b
+      - name: "South East Feedlane 2"
+        description: ""
+        uuid: 88fb5fd0-c56a-4f2c-8ed9-d53a372b93b8
+      - name: "South East Feedlane 3A"
+        description: ""
+        uuid: a87a1e47-d2b7-4632-8735-4e1e7a9fbc66
+      - name: "South East Feedlane 3B"
+        description: ""
+        uuid: 3fe822c4-384c-4531-a3eb-23b415c46741
+      - name: "South East Feedlane 4"
+        description: ""
+        uuid: 26df8952-310c-4a98-920b-ea6216cc5863
+      - name: "South Pen 19 East"
+        description: ""
+        uuid: ebe67ffb-bf83-4837-98cc-521e27f82b21
+      - name: "South West Feedlane 1"
+        description: ""
+        uuid: c915c0cf-b2e1-4483-a39a-18ae811c5b72
+      - name: "South West Feedlane 2"
+        description: ""
+        uuid: ab029b55-ed44-45ef-9379-7abfd8495268
+      - name: "South West Feedlane 3"
+        description: ""
+        uuid: 64ac34b1-7a75-4779-b3c7-6bb0879d7185
+      - name: "South West Feedlane 4"
+        description: ""
+        uuid: 3eda8a3d-140c-46c8-b015-a0dca0a9445e
+      - name: "Walkway East"
+        description: ""
+        uuid: fd68fe64-90d0-4259-8844-bd640332a955
+      - name: "Walkway North"
+        description: ""
+        uuid: 3c602a6a-821f-485e-8517-7bee7138393c
+      - name: "Walkway West"
+        description: ""
+        uuid: 7a142d58-7bc4-4a77-a31b-deae4d2c96d0
+      - name: "Watcher"
+        description: ""
+        uuid: acb4fe81-b0e3-4cc5-9301-7129ebd39f92
+        disabled: true
+      - name: "Unknown Camera 1"
+        description: "TODO: Update camera name"
+        uuid: 6b69d121-6da2-4bc3-badb-0ad02ef5b54e
+      - name: "Unknown Camera 2"
+        description: "TODO: Update camera name"
+        uuid: b797731a-d09f-45bf-8599-2c9967b0ea55

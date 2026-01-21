@@ -1,0 +1,86 @@
+tenant:
+  uuid: 5e0566fe-cf43-4451-9a6a-3908355da223
+farms:
+  - name: "Fair Oaks Farms - Site 3"
+    description: ""
+    uuid: 74e5bfbe-b113-4e53-8bc7-c08901551507
+    default_stream: 7ea9b53b-749e-420b-891b-43b238f6144e
+    time_zone: America/Chicago
+    streams:
+      - name: "Default Stream"
+        description: ""
+        uuid: 7ea9b53b-749e-420b-891b-43b238f6144e
+        deafult: true
+    cameras:
+      - name: "South West Feedlane #2"
+        description: ""
+        uuid: f347c060-c6b6-4a6f-9ce0-3b2b67ed2eca
+      - name: "South Walkway"
+        description: ""
+        uuid: ea49fbb2-cb1e-4a53-90b9-a5d8a425daef
+      - name: "Load Chute"
+        description: ""
+        uuid: d2846173-bd1d-4b07-ab3a-4774090b597b
+      - name: "Entry Exit"
+        description: ""
+        uuid: d253c08f-612c-4683-9188-04d0415a6d6c
+      - name: "South West Feedlane #1"
+        description: ""
+        uuid: ce148737-653d-4c51-8761-08d4dfe41b25
+      - name: "Calf Boxes"
+        description: ""
+        uuid: ccb6cd63-e3a2-4480-b792-e0a99faae3d8
+      - name: "Maternity Walkway"
+        description: ""
+        uuid: cc4ab101-c264-419f-a944-9272d7376b23
+      - name: "South East Feedlane #1"
+        description: ""
+        uuid: c2436841-b87d-42f6-a9c3-8ffffd28dcf0
+      - name: "Maternity East Feedlane"
+        description: ""
+        uuid: 6eea44f1-635d-4cdb-8814-d1a0c5bf2af0
+      - name: "South East Feedlane #2"
+        description: ""
+        uuid: ada173a2-7cc9-4384-b404-8fb7ba29a035
+      - name: "Post Dip"
+        description: ""
+        uuid: a324e37a-c3ab-4869-8f8d-02af2f5d62cd
+      - name: "Pre Dip"
+        description: ""
+        uuid: 9b8248db-e634-48eb-958a-9806c0d8c380
+      - name: "Maternity West Feedlane"
+        description: ""
+        uuid: 6bbf3e04-2ad2-481d-99ba-27d8bb7c1273
+      - name: "North West Feedlane #2"
+        description: ""
+        uuid: 6a466f93-0c7f-461c-97e6-d352bad3ba61
+      - name: "North East Feedlane #1"
+        description: ""
+        uuid: 6a3f33f8-0a29-4a80-953c-8123cf285bb7
+      - name: "North Walkway"
+        description: ""
+        uuid: 45ae9707-ff9a-436f-bfc1-c9f21013e120
+      - name: "Maternity Pen East"
+        description: ""
+        uuid: 441422d5-8d09-4ba4-94b6-e112f52cdd9b
+      - name: "Maternitry Pen West"
+        description: ""
+        uuid: 3b13b39c-17a4-494d-8c51-43ad1eab1f65
+      - name: "North East Feedlane #2"
+        description: ""
+        uuid: 35542904-d650-480c-a916-d6f500fd0284
+      - name: "North West Feedlane #1"
+        description: ""
+        uuid: 2e00ecfb-4a85-4c94-a033-0d51b215660f
+      - name: "Sick Cow Pen"
+        description: ""
+        uuid: 2cbc8f74-6d56-4ef8-b543-9832048e0368
+      - name: "Push Pen Back"
+        description: ""
+        uuid: 219e8f38-2b0f-462d-9416-69b9ea6e0c55
+      - name: "Push Pen Front"
+        description: ""
+        uuid: 0db01095-8184-4a64-971a-34b6738326c7
+      - name: "Palpatation Rail"
+        description: ""
+        uuid: 082c3d6d-cdd8-45af-b74a-59fa7023bc41

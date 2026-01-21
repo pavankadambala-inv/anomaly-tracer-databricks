@@ -1,0 +1,108 @@
+tenant:
+  uuid: 5e0566fe-cf43-4451-9a6a-3908355da223
+farms:
+  - name: "Fair Oaks Farms - Site 2"
+    description: ""
+    uuid: b1d842b7-3d29-4337-857e-4750aaf08f06
+    default_stream: 7ea9b53b-749e-420b-891b-43b238f6144e
+    time_zone: America/Chicago
+    streams:
+      - name: "Default Stream"
+        description: ""
+        uuid: 7ea9b53b-749e-420b-891b-43b238f6144e
+        deafult: true
+    cameras:
+      - name: "Parlor Server Room"
+        description: ""
+        uuid: 6fe68733-0c60-40ca-b751-dde537ae8075
+        disabled: true
+      - name: "Parlor Milk Room"
+        description: ""
+        uuid: b38893db-4514-471b-8970-9ba70804bbcb
+        disabled: true
+      - name: "Parlor Watcher Room"
+        description: ""
+        uuid: 3160a86c-c769-4808-b77c-2d4647c3e91b
+        disabled: true
+      - name: "Parlor Overview"
+        description: ""
+        uuid: 96048a08-4a6a-4abc-bf48-6976ce8a6bd7
+      - name: "Parlor North Corner"
+        description: ""
+        uuid: 688ecbdd-30b9-4c0b-814a-15ac6062985a
+      - name: "Parlor South Corner"
+        description: ""
+        uuid: beeac431-773f-4b8f-b875-1a218e8b441c
+      - name: "Parlor Pre Dip"
+        description: ""
+        uuid: 56b64fa6-577b-4195-91b6-52854a1fe7d8
+      - name: "Parlor Post Dip"
+        description: ""
+        uuid: 63330549-7e5d-4cd6-8978-e2fce7b6c55f
+      - name: "Holding Pen Sort Gate"
+        description: ""
+        uuid: 2bc43264-b252-4a00-8db4-ae7986d1528f
+      - name: "Holding Pen Push Pen Front"
+        description: ""
+        uuid: 66b70423-51a2-4ba1-b580-cf945131d998
+      - name: "Holding Pen Palpatation Rail"
+        description: ""
+        uuid: 65f36a36-d7db-4503-bf1f-0823465b6443
+      - name: "Holding Pen Push Pen Back"
+        description: ""
+        uuid: 2bf938c6-51b4-421b-bc9a-6970f6f9aecb
+      - name: "Barn 1 South Walkway"
+        description: ""
+        uuid: cc67d043-a291-47f3-855e-78007bc9401c
+      - name: "Barn 1 North Walkway"
+        description: ""
+        uuid: 5b09aca2-e599-47bb-bbbf-940bbc4277ee
+      - name: "Barn 1 Loading Chute"
+        description: ""
+        uuid: cb01056c-9c82-49cc-b652-7c9cfbc5be46
+      - name: "Barn 1 Sick Cow Pen"
+        description: ""
+        uuid: a9c33f89-4bda-4f49-8f95-1f1796581e2e
+      - name: "Barn 1 South"
+        description: ""
+        uuid: 349d1560-55c1-4aa9-a25e-d5db2512eb21
+      - name: "Barn 1 North"
+        description: ""
+        uuid: e2557928-1840-494f-8197-ae83a3c52a97
+      - name: "Barn 2 Walkway"
+        description: ""
+        uuid: baa6f4f7-b83a-40b7-a6cd-668c9ca630b0
+      - name: "Barn 2 South"
+        description: ""
+        uuid: 8fef9110-1170-477b-a6b8-c97ff027b548
+      - name: "Barn 2 North"
+        description: ""
+        uuid: 0cfb02ab-66cd-44fe-93bb-576986253733
+      - name: "Maternity Calf Box"
+        description: ""
+        uuid: 2e287c7d-1169-49f3-9cf7-8bfd2f17fbcd
+      - name: "Maternity North Calving Pen"
+        description: ""
+        uuid: a989ea39-02bc-406e-b3b1-527f0831d9e3
+      - name: "Maternity South Calving Pen"
+        description: ""
+        uuid: bc10f753-31bd-4ccd-8786-cedd15411402
+      - name: "Maternity North"
+        description: ""
+        uuid: d0db40b2-7122-42c4-880e-28848ebb1d2f
+      - name: "Robot Barn Camera (26)"
+        description: ""
+        uuid: 2dda8666-0bb0-4cca-aa1c-3688374ffe86
+      - name: "Robot Barn Camera (29)"
+        description: ""
+        uuid: 76b6bde7-9dcd-4d4d-8b11-c618df2b6816
+      - name: "Robot Lane North West"
+        description: ""
+        uuid: dde096f3-7a37-4844-8d14-30731fc6dcae
+      - name: "Robot Lane South West"
+        description: ""
+        uuid: 4616d341-d170-48dc-8762-b89bcc0d7aad
+      - name: "Herdsman"
+        description: ""
+        uuid: 38ef6c7d-81c4-4c07-b698-9e880656b069
+        disabled: true
