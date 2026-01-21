@@ -1,13 +1,20 @@
 """Databricks SQL query service for Stage 1 and Stage 2 data."""
 
+import sys
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import pandas as pd
 from databricks import sql
 
-from ..config import settings
-from ..infrastructure.databricks_client import get_databricks_connection
-from .camera_config import camera_config_service
+# Ensure parent directory is in path
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from config.settings import settings
+from infrastructure.databricks_client import get_databricks_connection
+from services.camera_config import camera_config_service
 
 
 class DatabricksQueryService:

@@ -1,14 +1,21 @@
 """Event handlers for Gradio UI interactions."""
 
 import json
+import sys
+from pathlib import Path
 from typing import Any, Optional, Tuple
 
 import gradio as gr
 import pandas as pd
 
-from ..services import camera_config_service, query_service, media_service
-from .formatters import format_results_for_display
-from .state import app_state
+# Ensure parent directory is in path
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from services import camera_config_service, query_service, media_service
+from ui.formatters import format_results_for_display
+from ui.state import app_state
 
 
 def _extract_dropdown_value(value: Any) -> Optional[str]:

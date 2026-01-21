@@ -21,31 +21,16 @@ Then open http://localhost:7860 in your browser.
 import sys
 from pathlib import Path
 
-# Support running directly (python app.py) by adding parent to path
-if __name__ == "__main__" and __package__ is None:
-    # Try to add the grandparent directory (cv-detection-logic) to sys.path
-    _parent = Path(__file__).resolve().parent.parent.parent
-    if str(_parent) not in sys.path:
-        sys.path.insert(0, str(_parent))
-    try:
-        __package__ = "bigquery_queries.anomaly_tracer"
-    except:
-        # If not in the expected package structure, run standalone
-        _current = Path(__file__).resolve().parent
-        if str(_current) not in sys.path:
-            sys.path.insert(0, str(_current))
+# Add current directory to path
+_current_dir = Path(__file__).resolve().parent
+if str(_current_dir) not in sys.path:
+    sys.path.insert(0, str(_current_dir))
 
-# Import with fallback for different package structures
-try:
-    from .config import settings
-    from .infrastructure import setup_ffmpeg_nvenc
-    from .services import camera_config_service
-    from .ui import create_app
-except ImportError:
-    from config import settings
-    from infrastructure import setup_ffmpeg_nvenc
-    from services import camera_config_service
-    from ui import create_app
+# Use absolute imports
+from config.settings import settings
+from infrastructure import setup_ffmpeg_nvenc
+from services import camera_config_service
+from ui import create_app
 
 
 def main():

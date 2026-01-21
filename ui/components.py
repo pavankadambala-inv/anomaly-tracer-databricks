@@ -4,7 +4,7 @@ from datetime import datetime
 
 import gradio as gr
 
-from .handlers import run_query, get_row_details, load_filters, update_cameras_on_farm_change
+from ui.handlers import run_query, get_row_details, load_filters, update_cameras_on_farm_change
 
 
 def create_app() -> gr.Blocks:

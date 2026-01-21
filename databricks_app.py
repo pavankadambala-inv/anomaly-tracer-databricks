@@ -26,11 +26,10 @@ _current_dir = Path(__file__).resolve().parent
 if str(_current_dir) not in sys.path:
     sys.path.insert(0, str(_current_dir))
 
-# Use absolute imports (not relative with .)
-from config.settings import settings
-from infrastructure.ffmpeg import setup_ffmpeg_nvenc
-from services.camera_config import camera_config_service
-from ui.components import create_app
+from config import settings
+from infrastructure import setup_ffmpeg_nvenc
+from services import camera_config_service
+from ui import create_app
 
 
 def configure_gcp_credentials():

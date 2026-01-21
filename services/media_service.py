@@ -3,16 +3,23 @@
 import io
 import os
 import subprocess
+import sys
 import tempfile
 from datetime import timedelta
+from pathlib import Path
 from typing import List, Optional
 
 from google.cloud import storage
 from PIL import Image
 
-from ..config import settings
-from ..infrastructure import get_storage_client, get_ffmpeg_cmd, has_nvenc
-from ..utils import temp_file_manager
+# Ensure parent directory is in path
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from config.settings import settings
+from infrastructure import get_storage_client, get_ffmpeg_cmd, has_nvenc
+from utils import temp_file_manager
 
 
 class MediaService:

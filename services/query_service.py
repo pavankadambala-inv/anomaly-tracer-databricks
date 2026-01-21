@@ -1,13 +1,20 @@
 """BigQuery query service for Stage 1 and Stage 2 data."""
 
+import sys
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import pandas as pd
 from google.cloud import bigquery
 
-from ..config import settings
-from ..infrastructure import get_bigquery_client
-from .camera_config import camera_config_service
+# Ensure parent directory is in path
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from config.settings import settings
+from infrastructure import get_bigquery_client
+from services.camera_config import camera_config_service
 
 
 class QueryService:

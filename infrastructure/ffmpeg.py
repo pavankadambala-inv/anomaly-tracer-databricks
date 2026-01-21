@@ -3,10 +3,16 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-from ..config import settings
+# Ensure parent directory is in path for imports
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from config.settings import settings
 
 # Module-level state for NVENC availability (use a dict so imports get a reference)
 _state = {"has_nvenc": False}

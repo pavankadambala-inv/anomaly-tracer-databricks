@@ -1,12 +1,19 @@
 """Databricks file storage access for Unity Catalog tables and GCS."""
 
 import io
+import sys
+from pathlib import Path
 from typing import Optional
 
 from google.cloud import storage
 from PIL import Image
 
-from ..config import settings
+# Ensure parent directory is in path
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from config.settings import settings
 
 
 def get_storage_client() -> storage.Client:

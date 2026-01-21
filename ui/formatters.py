@@ -1,8 +1,16 @@
 """Data formatting utilities for display in the UI."""
 
+import sys
+from pathlib import Path
+
 import pandas as pd
 
-from ..services import camera_config_service
+# Ensure parent directory is in path
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from services import camera_config_service
 
 
 def format_results_for_display(df: pd.DataFrame) -> pd.DataFrame:

@@ -1,12 +1,19 @@
 """Databricks SQL client factory and connection management."""
 
 import os
+import sys
+from pathlib import Path
 from typing import Optional
 
 from databricks import sql
 from databricks.sdk.core import Config
 
-from ..config import settings
+# Ensure parent directory is in path
+_parent = Path(__file__).resolve().parent.parent
+if str(_parent) not in sys.path:
+    sys.path.insert(0, str(_parent))
+
+from config.settings import settings
 
 
 def get_databricks_connection():

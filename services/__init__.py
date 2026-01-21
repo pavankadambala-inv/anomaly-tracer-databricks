@@ -3,12 +3,12 @@
 import sys
 from pathlib import Path
 
-# Add parent to path
+# Ensure parent is in path
 _parent = Path(__file__).resolve().parent.parent
 if str(_parent) not in sys.path:
     sys.path.insert(0, str(_parent))
 
-# Use absolute imports
+# Import settings to check platform
 from config.settings import settings
 from services.camera_config import CameraConfigService, camera_config_service
 from services.media_service import MediaService, media_service
