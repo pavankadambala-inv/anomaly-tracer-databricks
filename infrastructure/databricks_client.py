@@ -36,6 +36,10 @@ def get_databricks_connection():
     http_path = settings.databricks_http_path or os.getenv("DATABRICKS_HTTP_PATH")
     access_token = settings.databricks_access_token or os.getenv("DATABRICKS_TOKEN")
     
+    # Get OAuth credentials from environment (Databricks Apps provides these)
+    client_id = os.getenv("DATABRICKS_CLIENT_ID")
+    client_secret = os.getenv("DATABRICKS_CLIENT_SECRET")
+    
     if not server_hostname:
         raise ValueError(
             "Databricks server hostname not configured. "
@@ -49,44 +53,44 @@ def get_databricks_connection():
             "Example: /sql/1.0/warehouses/your-warehouse-id"
         )
     
+    print(f"Connecting to Databricks SQL...")
+    print(f"  Server: {server_hostname}")
+    print(f"  HTTP Path: {http_path}")
+    print(f"  Has Token: {bool(access_token)}")
+    print(f"  Has OAuth: {bool(client_id and client_secret)}")
+    
     # Try different authentication methods
     try:
         if access_token:
-            # Use token authentication
-            print(f"Connecting with token authentication...")
+            # Method 1: Use PAT token authentication
+            print(f"  Using: Token authentication")
             connection = sql.connect(
                 server_hostname=server_hostname,
                 http_path=http_path,
                 access_token=access_token,
             )
-        else:
-            # Use OAuth (client credentials) - Databricks Apps provides these automatically
-            # DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET are set by Databricks Apps
-            print(f"Connecting with OAuth (Databricks SDK)...")
+        elif client_id and client_secret:
+            # Method 2: Use OAuth M2M (machine-to-machine) authentication
+            print(f"  Using: OAuth M2M authentication")
             connection = sql.connect(
                 server_hostname=server_hostname,
                 http_path=http_path,
-                # Let databricks-sql-connector use SDK authentication
-                credentials_provider=_get_credentials_provider(),
+                client_id=client_id,
+                client_secret=client_secret,
             )
+        else:
+            # Method 3: Try default SDK authentication
+            print(f"  Using: Default SDK authentication")
+            connection = sql.connect(
+                server_hostname=server_hostname,
+                http_path=http_path,
+            )
+        
+        print(f"  ✓ Connected successfully!")
         return connection
     except Exception as e:
-        print(f"Connection error: {e}")
+        print(f"  ✗ Connection error: {e}")
         raise
-
-
-def _get_credentials_provider():
-    """Get credentials provider using Databricks SDK."""
-    from databricks.sdk.core import Config, oauth_service_principal
-    
-    config = Config()
-    
-    # Use OAuth service principal if client credentials are available
-    if config.client_id and config.client_secret:
-        return oauth_service_principal(config)
-    
-    # Fall back to default credentials
-    return None
 
 
 def get_workspace_client() -> WorkspaceClient:
