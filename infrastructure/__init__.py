@@ -14,12 +14,12 @@ from infrastructure.ffmpeg import setup_ffmpeg_nvenc, get_ffmpeg_cmd, has_nvenc
 
 # Import appropriate clients based on platform
 if settings.platform == "databricks":
-    from infrastructure.databricks_client import get_databricks_connection, get_databricks_config
+    from infrastructure.databricks_client import get_databricks_connection, get_workspace_client
     from infrastructure.databricks_storage import get_storage_client
     
     __all__ = [
         "get_databricks_connection",
-        "get_databricks_config",
+        "get_workspace_client",
         "get_storage_client",
         "setup_ffmpeg_nvenc",
         "get_ffmpeg_cmd",
