@@ -1,0 +1,7 @@
+command:
+  - python
+  - databricks_app.py
+
+env:
+  - name: DATABRICKS_HTTP_PATH
+    value: "/sql/1.0/warehouses/1066550024e48b7a"

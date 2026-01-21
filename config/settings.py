@@ -19,7 +19,8 @@ class Settings:
     
     # Databricks settings
     databricks_server_hostname: Optional[str] = None
-    databricks_http_path: Optional[str] = None
+    # Default HTTP path to your SQL Warehouse
+    databricks_http_path: Optional[str] = "/sql/1.0/warehouses/1066550024e48b7a"
     databricks_access_token: Optional[str] = None
     
     # Catalog and schema for Unity Catalog
