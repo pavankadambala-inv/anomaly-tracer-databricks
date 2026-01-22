@@ -7,6 +7,7 @@ from typing import Optional
 
 from databricks import sql
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.core import Config
 
 # Ensure parent directory is in path
 _parent = Path(__file__).resolve().parent.parent
@@ -20,31 +21,14 @@ def get_databricks_connection():
     """
     Get authenticated Databricks SQL connection.
     
-    Uses Databricks authentication from environment.
-    In Databricks Apps, uses DATABRICKS_HOST and OAuth client credentials automatically.
+    Uses Databricks SDK's unified authentication which automatically
+    detects and uses the available credentials (OAuth, PAT, etc.)
     
     Returns:
         Databricks SQL connection
     """
-    # Get connection parameters from settings or environment
-    # DATABRICKS_HOST is provided by Databricks Apps
-    server_hostname = (
-        settings.databricks_server_hostname 
-        or os.getenv("DATABRICKS_SERVER_HOSTNAME") 
-        or os.getenv("DATABRICKS_HOST")
-    )
+    # Get HTTP path from settings or environment
     http_path = settings.databricks_http_path or os.getenv("DATABRICKS_HTTP_PATH")
-    access_token = settings.databricks_access_token or os.getenv("DATABRICKS_TOKEN")
-    
-    # Get OAuth credentials from environment (Databricks Apps provides these)
-    client_id = os.getenv("DATABRICKS_CLIENT_ID")
-    client_secret = os.getenv("DATABRICKS_CLIENT_SECRET")
-    
-    if not server_hostname:
-        raise ValueError(
-            "Databricks server hostname not configured. "
-            "Please set DATABRICKS_SERVER_HOSTNAME or DATABRICKS_HOST environment variable."
-        )
     
     if not http_path:
         raise ValueError(
@@ -54,53 +38,41 @@ def get_databricks_connection():
         )
     
     print(f"Connecting to Databricks SQL...")
-    print(f"  Server: {server_hostname}")
     print(f"  HTTP Path: {http_path}")
-    print(f"  Has Token: {bool(access_token)}")
-    print(f"  Has OAuth: {bool(client_id and client_secret)}")
     
-    # Try different authentication methods
+    # Use Databricks SDK unified authentication
+    # This automatically picks up credentials from environment:
+    # - DATABRICKS_HOST
+    # - DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET (OAuth M2M)
+    # - DATABRICKS_TOKEN (PAT)
+    # - Or other configured auth methods
+    
     try:
-        if access_token:
-            # Method 1: Use PAT token authentication
-            print(f"  Using: Token authentication")
-            connection = sql.connect(
-                server_hostname=server_hostname,
-                http_path=http_path,
-                access_token=access_token,
-            )
-        elif client_id and client_secret:
-            # Method 2: Use OAuth M2M (machine-to-machine) authentication
-            print(f"  Using: OAuth M2M authentication")
-            print(f"  Client ID: {client_id[:8]}...")
-            
-            # Create credentials provider function for OAuth M2M
-            def credential_provider():
-                from databricks.sdk.core import Config, oauth_service_principal
-                config = Config(
-                    host=f"https://{server_hostname}",
-                    client_id=client_id,
-                    client_secret=client_secret,
-                )
-                # Get OAuth token using service principal
-                oauth_provider = oauth_service_principal(config)
-                return oauth_provider()
-            
-            connection = sql.connect(
-                server_hostname=server_hostname,
-                http_path=http_path,
-                credentials_provider=credential_provider,
-            )
-        else:
-            # Method 3: Try default SDK authentication
-            print(f"  Using: Default SDK authentication")
-            connection = sql.connect(
-                server_hostname=server_hostname,
-                http_path=http_path,
-            )
+        # Get SDK config (auto-detects auth)
+        cfg = Config()
+        print(f"  Host: {cfg.host}")
+        print(f"  Auth Type: {cfg.auth_type}")
+        
+        # Use SDK credentials provider
+        def sdk_credentials_provider():
+            """Credentials provider using Databricks SDK unified auth."""
+            headers = cfg.authenticate()
+            # Extract the token from Authorization header
+            auth_header = headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                return auth_header[7:]  # Remove "Bearer " prefix
+            return None
+        
+        # Connect using SDK auth
+        connection = sql.connect(
+            server_hostname=cfg.host.replace("https://", "").replace("http://", ""),
+            http_path=http_path,
+            credentials_provider=lambda: sdk_credentials_provider(),
+        )
         
         print(f"  ✓ Connected successfully!")
         return connection
+        
     except Exception as e:
         print(f"  ✗ Connection error: {e}")
         import traceback
