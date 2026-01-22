@@ -40,6 +40,10 @@ def get_databricks_connection():
     print(f"Connecting to Databricks SQL...")
     print(f"  HTTP Path: {http_path}")
     
+    # Show which credentials are being used
+    client_id = os.getenv("DATABRICKS_CLIENT_ID", "NOT SET")
+    print(f"  Client ID from env: {client_id[:12]}..." if len(client_id) > 12 else f"  Client ID: {client_id}")
+    
     # Use Databricks SDK unified authentication
     # This automatically picks up credentials from environment:
     # - DATABRICKS_HOST
@@ -52,6 +56,7 @@ def get_databricks_connection():
         cfg = Config()
         print(f"  Host: {cfg.host}")
         print(f"  Auth Type: {cfg.auth_type}")
+        print(f"  SDK Client ID: {cfg.client_id[:12] if cfg.client_id else 'None'}...")
         
         # Use SDK credentials provider
         def sdk_credentials_provider():
@@ -64,17 +69,33 @@ def get_databricks_connection():
             return None
         
         # Connect using SDK auth
+        print(f"  Attempting connection...")
         connection = sql.connect(
             server_hostname=cfg.host.replace("https://", "").replace("http://", ""),
             http_path=http_path,
             credentials_provider=lambda: sdk_credentials_provider(),
         )
         
-        print(f"  ✓ Connected successfully!")
+        print(f"  ✓ Connection object created!")
+        
+        # Test the connection with a simple query
+        print(f"  Testing connection with simple query...")
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 as test")
+                result = cursor.fetchone()
+                print(f"  ✓ Test query successful! Result: {result}")
+        except Exception as test_error:
+            print(f"  ✗ Test query failed: {test_error}")
+            raise
+        
+        print(f"  ✓ Connection fully verified!")
         return connection
         
     except Exception as e:
         print(f"  ✗ Connection error: {e}")
+        print(f"  Error type: {type(e).__name__}")
+        print(f"  Error details: {str(e)}")
         import traceback
         traceback.print_exc()
         raise

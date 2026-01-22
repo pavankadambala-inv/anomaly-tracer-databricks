@@ -57,16 +57,24 @@ class DatabricksQueryService:
         LIMIT 100
         """
         
-        print(f"DEBUG get_available_farms: Executing query for date={date_str}")
-        print(f"DEBUG get_available_farms: Table={settings.full_stage1_table}")
+        print(f"")
+        print(f"=" * 50)
+        print(f"QUERY: get_available_farms")
+        print(f"=" * 50)
+        print(f"  Date: {date_str}")
+        print(f"  Table: {settings.full_stage1_table}")
+        print(f"  Query: SELECT DISTINCT farm_id FROM ... WHERE DATE(processing_timestamp) = '{date_str}'")
         
         try:
-            with self.connection.cursor() as cursor:
-                print(f"DEBUG get_available_farms: Cursor obtained, executing...")
+            print(f"  Step 1: Getting connection...")
+            conn = self.connection
+            print(f"  Step 2: Creating cursor...")
+            with conn.cursor() as cursor:
+                print(f"  Step 3: Executing query...")
                 cursor.execute(query)
-                print(f"DEBUG get_available_farms: Query executed, fetching results...")
+                print(f"  Step 4: Fetching results...")
                 results = cursor.fetchall()
-                print(f"DEBUG get_available_farms: Fetched {len(results)} farms")
+                print(f"  ✓ SUCCESS: Fetched {len(results)} farms")
                 
                 farms = []
                 for row in results:
@@ -78,9 +86,13 @@ class DatabricksQueryService:
                 farms.sort(key=lambda x: x[0])
                 return [("All", "All")] + farms
         except Exception as e:
-            print(f"Error fetching farms: {e}")
+            print(f"  ✗ ERROR fetching farms!")
+            print(f"  Error type: {type(e).__name__}")
+            print(f"  Error message: {str(e)}")
             import traceback
+            print(f"  Full traceback:")
             traceback.print_exc()
+            print(f"=" * 50)
             return [("All", "All")]
     
     def get_available_cameras(
@@ -288,15 +300,24 @@ class DatabricksQueryService:
         LIMIT {limit}
         """
         
-        print(f"DEBUG query_stage1_stage2_linked: date={date_str}, farm={farm_id}, camera={camera_id}")
-        print(f"DEBUG query_stage1_stage2_linked: where_clause={where_clause}")
-        print(f"DEBUG query_stage1_stage2_linked: Executing complex query...")
+        print(f"")
+        print(f"=" * 50)
+        print(f"QUERY: query_stage1_stage2_linked")
+        print(f"=" * 50)
+        print(f"  Date: {date_str}")
+        print(f"  Farm: {farm_id}")
+        print(f"  Camera: {camera_id}")
+        print(f"  Where clause: {where_clause}")
+        print(f"  Limit: {limit}")
         
         try:
-            with self.connection.cursor() as cursor:
-                print(f"DEBUG query_stage1_stage2_linked: Cursor obtained, executing query...")
+            print(f"  Step 1: Getting connection...")
+            conn = self.connection
+            print(f"  Step 2: Creating cursor...")
+            with conn.cursor() as cursor:
+                print(f"  Step 3: Executing complex JOIN query...")
                 cursor.execute(query)
-                print(f"DEBUG query_stage1_stage2_linked: Query executed, fetching results...")
+                print(f"  Step 4: Fetching results...")
                 
                 # Fetch column names
                 columns = [desc[0] for desc in cursor.description]
@@ -307,12 +328,18 @@ class DatabricksQueryService:
                 # Convert to DataFrame
                 df = pd.DataFrame(rows, columns=columns)
                 
-                print(f"DEBUG query_stage1_stage2_linked: returned {len(df)} rows")
+                print(f"  ✓ SUCCESS: Returned {len(df)} rows")
+                print(f"  Columns: {list(df.columns)[:5]}..." if len(df.columns) > 5 else f"  Columns: {list(df.columns)}")
+                print(f"=" * 50)
                 return df
         except Exception as e:
-            print(f"Error querying data: {e}")
+            print(f"  ✗ ERROR querying data!")
+            print(f"  Error type: {type(e).__name__}")
+            print(f"  Error message: {str(e)}")
             import traceback
+            print(f"  Full traceback:")
             traceback.print_exc()
+            print(f"=" * 50)
             return pd.DataFrame()
 
 
