@@ -61,19 +61,37 @@ def get_databricks_connection():
         # Use SDK credentials provider
         def sdk_credentials_provider():
             """Credentials provider using Databricks SDK unified auth."""
-            headers = cfg.authenticate()
-            # Extract the token from Authorization header
-            auth_header = headers.get("Authorization", "")
-            if auth_header.startswith("Bearer "):
-                return auth_header[7:]  # Remove "Bearer " prefix
-            return None
+            try:
+                headers = cfg.authenticate()
+                
+                # Check if authenticate() returned None or invalid data
+                if headers is None:
+                    raise ValueError("cfg.authenticate() returned None - authentication failed")
+                
+                if not isinstance(headers, dict):
+                    raise ValueError(f"cfg.authenticate() returned {type(headers).__name__}, expected dict")
+                
+                # Extract the token from Authorization header
+                auth_header = headers.get("Authorization")
+                
+                if not auth_header:
+                    raise ValueError(f"No Authorization header in response. Headers: {list(headers.keys())}")
+                
+                if auth_header.startswith("Bearer "):
+                    return auth_header[7:]  # Remove "Bearer " prefix
+                else:
+                    raise ValueError(f"Authorization header doesn't start with 'Bearer ': {auth_header[:50]}")
+                    
+            except Exception as e:
+                print(f"  ✗ Credentials provider error: {e}")
+                raise
         
         # Connect using SDK auth
         print(f"  Attempting connection...")
         connection = sql.connect(
             server_hostname=cfg.host.replace("https://", "").replace("http://", ""),
             http_path=http_path,
-            credentials_provider=lambda: sdk_credentials_provider(),
+            credentials_provider=sdk_credentials_provider,
         )
         
         print(f"  ✓ Connection object created!")

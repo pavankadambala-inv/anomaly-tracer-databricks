@@ -79,17 +79,35 @@ from ui import create_app
 
 
 def configure_gcp_credentials():
-    """Configure GCP credentials from Databricks Secrets or environment."""
-    # Option 1: Try to get from Databricks Secrets
+    """Configure GCP credentials from environment or Databricks Secrets."""
+    import tempfile
+    
+    # Debug: Show all GCP-related env vars
+    print(f"  DEBUG: GCP_SERVICE_ACCOUNT_JSON set: {bool(os.getenv('GCP_SERVICE_ACCOUNT_JSON'))}")
+    if os.getenv('GCP_SERVICE_ACCOUNT_JSON'):
+        print(f"  DEBUG: GCP_SERVICE_ACCOUNT_JSON length: {len(os.getenv('GCP_SERVICE_ACCOUNT_JSON'))}")
+    
+    # Option 1: GCP_SERVICE_ACCOUNT_JSON environment variable (from app.yaml)
+    gcp_json = os.getenv("GCP_SERVICE_ACCOUNT_JSON")
+    if gcp_json:
+        try:
+            # Write JSON to temp file
+            temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+            temp_file.write(gcp_json)
+            temp_file.close()
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
+            print(f"✓ GCP credentials loaded from GCP_SERVICE_ACCOUNT_JSON env var")
+            return True
+        except Exception as e:
+            print(f"Warning: Could not parse GCP_SERVICE_ACCOUNT_JSON: {e}")
+    
+    # Option 2: Try to get from Databricks Secrets
     try:
         from databricks.sdk import WorkspaceClient
         w = WorkspaceClient()
         
-        # Try to get service account key from secrets
         try:
             secret_value = w.secrets.get_secret(scope="gcp-credentials", key="service-account-key")
-            # Write to temporary file
-            import tempfile
             temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
             temp_file.write(secret_value.value)
             temp_file.close()
@@ -101,7 +119,7 @@ def configure_gcp_credentials():
     except ImportError:
         print("Note: Databricks SDK not available for secrets")
     
-    # Option 2: Use GOOGLE_APPLICATION_CREDENTIALS env var
+    # Option 3: Use GOOGLE_APPLICATION_CREDENTIALS env var (file path)
     if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         if os.path.exists(cred_path):
@@ -110,7 +128,7 @@ def configure_gcp_credentials():
         else:
             print(f"Warning: GOOGLE_APPLICATION_CREDENTIALS points to non-existent file: {cred_path}")
     
-    # Option 3: Check for service account JSON in standard locations
+    # Option 4: Check for service account JSON in standard locations
     possible_paths = [
         "/dbfs/secrets/gcp-key.json",
         "/dbfs/FileStore/secrets/gcp-key.json",
@@ -125,7 +143,7 @@ def configure_gcp_credentials():
     
     print("Warning: No GCP credentials found")
     print("  Frames and videos may not be accessible")
-    print("  Set GOOGLE_APPLICATION_CREDENTIALS or configure Databricks Secrets")
+    print("  Set GCP_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS")
     return False
 
 
