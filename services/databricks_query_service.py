@@ -179,14 +179,15 @@ class DatabricksQueryService:
         # Build dynamic filters
         filters = []
         
-        # Add time range filter
+        # Add time range filter using HOUR and MINUTE extraction
         if start_time:
             st = start_time if start_time.count(':') == 2 else start_time + ":00"
-            filters.append(f"TIME(s1.stage1_timestamp) >= '{st}'")
+            # Convert to comparable time string format (HH:mm:ss)
+            filters.append(f"DATE_FORMAT(s1.stage1_timestamp, 'HH:mm:ss') >= '{st}'")
         
         if end_time:
             et = end_time if end_time.count(':') == 2 else end_time + ":59"
-            filters.append(f"TIME(s1.stage1_timestamp) <= '{et}'")
+            filters.append(f"DATE_FORMAT(s1.stage1_timestamp, 'HH:mm:ss') <= '{et}'")
         
         if farm_id and farm_id != "All":
             filters.append(f"s1.farm_id = '{farm_id}'")
@@ -220,8 +221,8 @@ class DatabricksQueryService:
             probability_down_cow,
             probability_quick_movements,
             probability_no_event,
-            -- Stage 1 raw response from Gemini
-            TO_JSON(gemini_raw_response) AS stage1_raw_response
+            -- Stage 1 raw response from Gemini (already a string)
+            gemini_raw_response AS stage1_raw_response
           FROM {settings.full_stage1_table}
           WHERE DATE(processing_timestamp) = '{date_str}'
         ),
@@ -240,8 +241,8 @@ class DatabricksQueryService:
             -- blk_file = block number + frame offset (e.g., 042_0000015)
             REGEXP_EXTRACT(file_name, '^(\\\\d{{3}}_\\\\d{{7}})_', 1) AS blk_file,
             REGEXP_EXTRACT(file_name, '_(\\\\d{{4}}-\\\\d{{2}}-\\\\d{{2}}T\\\\d{{2}}:\\\\d{{2}}:\\\\d{{2}})', 1) AS video_timestamp_key,
-            -- Stage 2 raw response from first model vote
-            model_votes[0].raw_response AS stage2_raw_response
+            -- Stage 2 raw response - model_votes is a string, not array
+            model_votes AS stage2_raw_response
           FROM {settings.full_stage2_table}
           WHERE DATE(inference_timestamp) BETWEEN DATE_SUB('{date_str}', 2) 
                                               AND DATE_ADD('{date_str}', 2)

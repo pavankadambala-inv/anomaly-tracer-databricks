@@ -52,46 +52,43 @@ def get_databricks_connection():
     # - Or other configured auth methods
     
     try:
-        # Get SDK config (auto-detects auth)
-        cfg = Config()
+        # Use Databricks SDK to handle authentication
+        from databricks.sdk import WorkspaceClient
+        
+        # Create SDK client (this handles OAuth M2M, PAT, etc. automatically)
+        w = WorkspaceClient()
+        cfg = w.config
+        
         print(f"  Host: {cfg.host}")
         print(f"  Auth Type: {cfg.auth_type}")
         print(f"  SDK Client ID: {cfg.client_id[:12] if cfg.client_id else 'None'}...")
         
-        # Use SDK credentials provider
-        def sdk_credentials_provider():
-            """Credentials provider using Databricks SDK unified auth."""
-            try:
-                headers = cfg.authenticate()
-                
-                # Check if authenticate() returned None or invalid data
-                if headers is None:
-                    raise ValueError("cfg.authenticate() returned None - authentication failed")
-                
-                if not isinstance(headers, dict):
-                    raise ValueError(f"cfg.authenticate() returned {type(headers).__name__}, expected dict")
-                
-                # Extract the token from Authorization header
-                auth_header = headers.get("Authorization")
-                
-                if not auth_header:
-                    raise ValueError(f"No Authorization header in response. Headers: {list(headers.keys())}")
-                
-                if auth_header.startswith("Bearer "):
-                    return auth_header[7:]  # Remove "Bearer " prefix
-                else:
-                    raise ValueError(f"Authorization header doesn't start with 'Bearer ': {auth_header[:50]}")
-                    
-            except Exception as e:
-                print(f"  ✗ Credentials provider error: {e}")
-                raise
+        # Get authentication token from SDK
+        print(f"  Getting authentication token...")
+        auth_headers = cfg.authenticate()
         
-        # Connect using SDK auth
+        if not auth_headers or not isinstance(auth_headers, dict):
+            raise ValueError(f"cfg.authenticate() returned invalid data: {type(auth_headers)}")
+        
+        auth_header = auth_headers.get("Authorization")
+        if not auth_header:
+            raise ValueError(f"No Authorization header. Available headers: {list(auth_headers.keys())}")
+        
+        if not auth_header.startswith("Bearer "):
+            raise ValueError(f"Authorization header doesn't start with 'Bearer ': {auth_header[:50]}")
+        
+        # Extract token (remove "Bearer " prefix)
+        access_token = auth_header[7:]
+        print(f"  ✓ Got access token (first 20 chars): {access_token[:20]}...")
+        
+        # Connect using the access token directly
+        # Note: Using access_token instead of credentials_provider avoids 
+        # compatibility issues with the databricks-sql-connector
         print(f"  Attempting connection...")
         connection = sql.connect(
             server_hostname=cfg.host.replace("https://", "").replace("http://", ""),
             http_path=http_path,
-            credentials_provider=sdk_credentials_provider,
+            access_token=access_token,
         )
         
         print(f"  ✓ Connection object created!")

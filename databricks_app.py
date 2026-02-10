@@ -73,6 +73,7 @@ except Exception as e:
     print(f"Note: Could not patch gradio_client: {e}")
 
 from config import settings
+from config.secrets_loader import load_secrets_from_yaml, ensure_required_secrets
 from infrastructure import setup_ffmpeg_nvenc
 from services import camera_config_service
 from ui import create_app
@@ -152,6 +153,12 @@ def main():
     print("=" * 60)
     print("CV Inference Traceability Dashboard (Databricks)")
     print("=" * 60)
+    
+    # Load secrets from app.secrets.yaml (if it exists)
+    print("Loading secrets from app.secrets.yaml...")
+    load_secrets_from_yaml()
+    print()
+    
     print(f"Platform: {settings.platform}")
     print(f"Catalog: {settings.catalog_name}")
     print(f"Schema: {settings.schema_name}")
@@ -168,6 +175,13 @@ def main():
     if not settings.databricks_http_path:
         print("ERROR: DATABRICKS_HTTP_PATH not set!")
         print("Please set environment variable DATABRICKS_HTTP_PATH")
+        sys.exit(1)
+    
+    # Verify required Databricks OAuth secrets
+    required_secrets = ['DATABRICKS_CLIENT_ID', 'DATABRICKS_CLIENT_SECRET']
+    if not ensure_required_secrets(required_secrets):
+        print("ERROR: Missing required Databricks OAuth credentials!")
+        print("Please add them to app.secrets.yaml or set as environment variables")
         sys.exit(1)
     
     print(f"Databricks Server: {settings.databricks_server_hostname}")
@@ -221,19 +235,28 @@ def main():
     except Exception as e:
         print(f"Note: Could not patch networking: {e}")
     
-    app.launch(
-        server_name="0.0.0.0",
-        server_port=port,
-        share=False,
-        show_error=True,
-        show_api=False,  # Disable API docs to avoid schema serialization issues
-        # For Databricks Apps behind reverse proxy
-        root_path=os.getenv("GRADIO_ROOT_PATH", ""),
-        # Additional settings for Databricks
-        favicon_path=None,
-        ssl_verify=False,
-        quiet=False,
-    )
+    # Launch with Gradio 6.0 compatible parameters
+    launch_params = {
+        "server_name": "0.0.0.0",
+        "server_port": port,
+        "share": False,
+        "show_error": True,
+        "root_path": os.getenv("GRADIO_ROOT_PATH", ""),
+        "quiet": False,
+    }
+    
+    # Add version-specific parameters
+    try:
+        import gradio
+        version = tuple(map(int, gradio.__version__.split('.')[:2]))
+        if version < (6, 0):
+            launch_params["show_api"] = False
+            launch_params["favicon_path"] = None
+            launch_params["ssl_verify"] = False
+    except Exception:
+        pass
+    
+    app.launch(**launch_params)
 
 
 if __name__ == "__main__":
