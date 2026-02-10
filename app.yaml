@@ -2,16 +2,9 @@ command:
   - python
   - databricks_app.py
 
-# IMPORTANT: Secrets should NOT be hardcoded here!
-# Configure them in the Databricks App UI under "Environment variables"
-# See app.secrets.yaml for the values (DO NOT commit that file)
-
 env:
   - name: DATABRICKS_HTTP_PATH
     value: "/sql/1.0/warehouses/1066550024e48b7a"
   - name: GRADIO_ROOT_PATH
     value: ""
-  # The following secrets must be configured in Databricks App UI:
-  # - DATABRICKS_CLIENT_ID
-  # - DATABRICKS_CLIENT_SECRET  
-  # - GCP_SERVICE_ACCOUNT_JSON
+
