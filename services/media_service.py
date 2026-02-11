@@ -18,8 +18,16 @@ if str(_parent) not in sys.path:
     sys.path.insert(0, str(_parent))
 
 from config.settings import settings
-from infrastructure import get_storage_client, get_ffmpeg_cmd, has_nvenc
+from infrastructure import get_storage_client
 from utils import temp_file_manager
+
+# Try to import opencv for Python-based video conversion
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+except ImportError:
+    OPENCV_AVAILABLE = False
+    print("⚠️  opencv-python not available - videos will be served without conversion")
 
 
 class MediaService:
@@ -191,9 +199,82 @@ class MediaService:
             print(f"Error creating GIF: {e}")
             return None
     
+    def convert_video_with_opencv(self, input_path: str, output_path: str) -> bool:
+        """
+        Convert video using OpenCV (Python-based, no FFmpeg binary needed).
+        Converts HEVC/H.265 to H.264 for browser compatibility.
+        
+        Args:
+            input_path: Path to input video file
+            output_path: Path to output video file
+            
+        Returns:
+            True if conversion successful, False otherwise
+        """
+        if not OPENCV_AVAILABLE:
+            return False
+        
+        try:
+            print(f"Converting video with OpenCV (Python)...")
+            
+            # Open input video
+            cap = cv2.VideoCapture(input_path)
+            if not cap.isOpened():
+                print(f"Failed to open video: {input_path}")
+                return False
+            
+            # Get video properties
+            fps = int(cap.get(cv2.CAP_PROP_FPS))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            print(f"  Input: {width}x{height} @ {fps}fps, {total_frames} frames")
+            
+            # Define codec and create VideoWriter
+            # Use H.264 codec (mp4v or avc1)
+            fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264
+            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+            
+            if not out.isOpened():
+                print(f"Failed to create output video writer")
+                cap.release()
+                return False
+            
+            # Convert frame by frame
+            frame_count = 0
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                out.write(frame)
+                frame_count += 1
+                
+                # Progress indicator every 30 frames
+                if frame_count % 30 == 0:
+                    progress = (frame_count / total_frames * 100) if total_frames > 0 else 0
+                    print(f"  Progress: {frame_count}/{total_frames} frames ({progress:.1f}%)")
+            
+            # Release everything
+            cap.release()
+            out.release()
+            
+            if frame_count > 0:
+                print(f"✓ Converted {frame_count} frames successfully")
+                return True
+            else:
+                print(f"No frames processed")
+                return False
+                
+        except Exception as e:
+            print(f"OpenCV conversion error: {e}")
+            return False
+    
     def download_video_to_temp(self, gcs_uri: str) -> Optional[str]:
         """
-        Download video from GCS to a temporary file for Gradio display.
+        Download video from GCS and convert using OpenCV (Python-based).
+        Converts HEVC/H.265 to H.264 for browser compatibility.
         
         Args:
             gcs_uri: GCS URI of the video
@@ -223,50 +304,24 @@ class MediaService:
             print(f"Downloading video...")
             blob.download_to_filename(temp_download.name)
             
-            # Convert HEVC to H.264 for browser compatibility
-            temp_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-            ffmpeg = get_ffmpeg_cmd()
-            
-            result = None
-            
-            if has_nvenc():
-                # Try GPU encoding first (much faster)
-                print(f"Converting HEVC to H.264 (GPU)...")
-                gpu_cmd = [
-                    ffmpeg, "-y", "-hwaccel", "cuda", "-i", temp_download.name,
-                    "-c:v", "h264_nvenc", "-preset", "p1", "-b:v", "5M",
-                    "-c:a", "copy",
-                    "-movflags", "+faststart",
-                    "-f", "mp4", "-loglevel", "error",
-                    temp_output.name
-                ]
-                result = subprocess.run(gpu_cmd, capture_output=True, text=True)
+            # Try OpenCV conversion for browser compatibility
+            if OPENCV_AVAILABLE:
+                print(f"Converting video with OpenCV (Python-based)...")
+                temp_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
                 
-                if result.returncode != 0:
-                    print(f"GPU encoding failed, falling back to CPU...")
+                if self.convert_video_with_opencv(temp_download.name, temp_output.name):
+                    os.unlink(temp_download.name)
+                    temp_file_manager.track_video(temp_output.name)
+                    return temp_output.name
+                else:
+                    os.unlink(temp_output.name)
+                    print(f"OpenCV conversion failed - returning original video")
+            else:
+                print(f"⚠️  OpenCV not available - returning original video (may not play in all browsers)")
             
-            if result is None or result.returncode != 0:
-                # Fall back to CPU encoding
-                print(f"Converting HEVC to H.264 (CPU)...")
-                cpu_cmd = [
-                    ffmpeg, "-y", "-i", temp_download.name,
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
-                    "-c:a", "copy",
-                    "-movflags", "+faststart",
-                    "-f", "mp4", "-loglevel", "warning",
-                    temp_output.name
-                ]
-                result = subprocess.run(cpu_cmd, capture_output=True, text=True)
-            
-            if result.returncode != 0:
-                print(f"FFmpeg error: {result.stderr}")
-                temp_file_manager.track_video(temp_download.name)
-                return temp_download.name
-            
-            os.unlink(temp_download.name)
-            print(f"Video ready: {temp_output.name} ({os.path.getsize(temp_output.name)} bytes)")
-            temp_file_manager.track_video(temp_output.name)
-            return temp_output.name
+            # Return original if conversion not available or failed
+            temp_file_manager.track_video(temp_download.name)
+            return temp_download.name
             
         except Exception as e:
             print(f"Error downloading video from {gcs_uri}: {e}")

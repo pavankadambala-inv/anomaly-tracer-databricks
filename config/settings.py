@@ -43,17 +43,11 @@ class Settings:
     # Camera config directory (relative to this file's parent)
     camera_config_dir: Optional[Path] = None
     
-    # FFmpeg settings
-    ffmpeg_nvenc_path: Optional[Path] = None
-    
     def __post_init__(self):
         """Set default paths after initialization."""
         if self.camera_config_dir is None:
             # Default to camera_config directory next to the package
             self.camera_config_dir = Path(__file__).parent.parent / "camera_config"
-        
-        if self.ffmpeg_nvenc_path is None:
-            self.ffmpeg_nvenc_path = Path.home() / ".local" / "bin" / "ffmpeg-nvenc"
         
         # Load Databricks settings from environment if not set
         # Support both DATABRICKS_SERVER_HOSTNAME and DATABRICKS_HOST (Databricks Apps provides the latter)

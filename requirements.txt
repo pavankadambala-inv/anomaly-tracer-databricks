@@ -13,6 +13,9 @@ google-cloud-storage>=2.10.0
 # Image processing
 Pillow>=10.0.0
 
+# Video processing (Python-based, no FFmpeg binary needed)
+opencv-python-headless>=4.8.0
+
 # YAML parsing for camera config
 PyYAML>=6.0
 

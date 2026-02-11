@@ -10,7 +10,6 @@ if str(_parent) not in sys.path:
 
 # Import settings to check platform
 from config.settings import settings
-from infrastructure.ffmpeg import setup_ffmpeg_nvenc, get_ffmpeg_cmd, has_nvenc
 
 # Import appropriate clients based on platform
 if settings.platform == "databricks":
@@ -21,9 +20,6 @@ if settings.platform == "databricks":
         "get_databricks_connection",
         "get_workspace_client",
         "get_storage_client",
-        "setup_ffmpeg_nvenc",
-        "get_ffmpeg_cmd",
-        "has_nvenc",
     ]
 else:
     from infrastructure.bigquery_client import get_bigquery_client
@@ -31,8 +27,5 @@ else:
     
     __all__ = [
         "get_bigquery_client",
-        "get_storage_client", 
-        "setup_ffmpeg_nvenc",
-        "get_ffmpeg_cmd",
-        "has_nvenc",
+        "get_storage_client",
     ]

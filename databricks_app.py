@@ -74,7 +74,6 @@ except Exception as e:
 
 from config import settings
 from config.secrets_loader import load_secrets_from_yaml, ensure_required_secrets
-from infrastructure import setup_ffmpeg_nvenc
 from services import camera_config_service
 from ui import create_app
 
@@ -201,15 +200,6 @@ def main():
     except Exception as e:
         print(f"Warning: Could not load camera config: {e}")
         print("  (Camera names will show as IDs)")
-    print()
-    
-    # Setup ffmpeg with NVENC for fast video conversion
-    print("Checking FFmpeg setup...")
-    try:
-        setup_ffmpeg_nvenc()
-    except Exception as e:
-        print(f"Warning: FFmpeg setup issue: {e}")
-        print("  (Video conversion may be slower)")
     print()
     
     # Create and launch the app
