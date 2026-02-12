@@ -68,15 +68,22 @@ class DatabricksQueryService:
             except Exception as e:
                 last_error = e
                 error_msg = str(e).lower()
+                exception_type = type(e).__name__
                 
                 # Check if it's a connection-related error
-                is_connection_error = any(keyword in error_msg for keyword in [
-                    'connection', 'closed', 'timeout', 'broken pipe', 
-                    'session', 'expired', 'invalid session'
-                ])
+                # Include RequestError as it typically indicates network/connection issues
+                is_connection_error = (
+                    exception_type == 'RequestError' or
+                    any(keyword in error_msg for keyword in [
+                        'connection', 'closed', 'timeout', 'broken pipe', 
+                        'session', 'expired', 'invalid session',
+                        'error during request', 'request to server'
+                    ])
+                )
                 
                 if is_connection_error and attempt < max_retries - 1:
                     print(f"  ⚠️  Connection error detected (attempt {attempt + 1}/{max_retries})")
+                    print(f"  Error type: {exception_type}")
                     print(f"  Error: {e}")
                     self._reconnect()
                     # Retry after reconnect
