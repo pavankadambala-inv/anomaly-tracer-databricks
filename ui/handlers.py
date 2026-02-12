@@ -214,11 +214,20 @@ def get_row_details(evt: gr.SelectData) -> Tuple[Optional[str], Optional[str], s
         s1_raw = row.get('stage1_raw_response')
         if pd.notna(s1_raw) and s1_raw:
             try:
-                # Pretty print the JSON
+                # The raw response might contain literal \n characters that need to be unescaped
+                # First, if it's a string with escaped newlines, unescape them
+                if isinstance(s1_raw, str) and '\\n' in s1_raw:
+                    # Replace literal \n with actual newlines
+                    s1_raw = s1_raw.replace('\\n', '\n')
+                
+                # Parse and reformat JSON
                 s1_json = json.loads(s1_raw)
-                details.append(json.dumps(s1_json, indent=2))
+                formatted = json.dumps(s1_json, indent=2)
+                details.append(formatted)
             except (json.JSONDecodeError, TypeError):
-                details.append(str(s1_raw)[:2000])  # Fallback to string, truncated
+                # If JSON parsing fails, just clean up the escaped characters
+                cleaned = str(s1_raw).replace('\\n', '\n').replace('\\"', '"')[:2000]
+                details.append(cleaned)
         else:
             details.append("  (No raw response available)")
         
@@ -227,11 +236,20 @@ def get_row_details(evt: gr.SelectData) -> Tuple[Optional[str], Optional[str], s
         s2_raw = row.get('stage2_raw_response')
         if pd.notna(s2_raw) and s2_raw:
             try:
-                # Pretty print the JSON
+                # The raw response might contain literal \n characters that need to be unescaped
+                # First, if it's a string with escaped newlines, unescape them
+                if isinstance(s2_raw, str) and '\\n' in s2_raw:
+                    # Replace literal \n with actual newlines
+                    s2_raw = s2_raw.replace('\\n', '\n')
+                
+                # Parse and reformat JSON
                 s2_json = json.loads(s2_raw)
-                details.append(json.dumps(s2_json, indent=2))
+                formatted = json.dumps(s2_json, indent=2)
+                details.append(formatted)
             except (json.JSONDecodeError, TypeError):
-                details.append(str(s2_raw)[:2000])  # Fallback to string, truncated
+                # If JSON parsing fails, just clean up the escaped characters
+                cleaned = str(s2_raw).replace('\\n', '\n').replace('\\"', '"')[:2000]
+                details.append(cleaned)
         else:
             details.append("  (No raw response available)")
         
