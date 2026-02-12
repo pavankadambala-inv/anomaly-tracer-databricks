@@ -36,6 +36,57 @@ class DatabricksQueryService:
             self._connection = get_databricks_connection()
         return self._connection
     
+    def _reconnect(self):
+        """Force reconnection by closing old connection and creating new one."""
+        print("🔄 Reconnecting to Databricks...")
+        try:
+            if self._connection is not None:
+                self._connection.close()
+        except Exception as e:
+            print(f"  (Error closing old connection: {e})")
+        
+        self._connection = None
+        self._connection = get_databricks_connection()
+        print("  ✓ Reconnected successfully")
+    
+    def _execute_with_retry(self, query_func, max_retries=2):
+        """
+        Execute a query function with automatic reconnect on connection errors.
+        
+        Args:
+            query_func: Function that takes a connection and executes a query
+            max_retries: Maximum number of retry attempts (default 2)
+            
+        Returns:
+            Query result from query_func
+        """
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                return query_func(self.connection)
+            except Exception as e:
+                last_error = e
+                error_msg = str(e).lower()
+                
+                # Check if it's a connection-related error
+                is_connection_error = any(keyword in error_msg for keyword in [
+                    'connection', 'closed', 'timeout', 'broken pipe', 
+                    'session', 'expired', 'invalid session'
+                ])
+                
+                if is_connection_error and attempt < max_retries - 1:
+                    print(f"  ⚠️  Connection error detected (attempt {attempt + 1}/{max_retries})")
+                    print(f"  Error: {e}")
+                    self._reconnect()
+                    # Retry after reconnect
+                else:
+                    # Not a connection error, or max retries reached
+                    raise
+        
+        # Should not reach here, but just in case
+        raise last_error
+    
     def get_available_farms(self, date_str: str) -> List[Tuple[str, str]]:
         """
         Get list of farm IDs that have data on the given date.
@@ -63,34 +114,30 @@ class DatabricksQueryService:
         print(f"=" * 50)
         print(f"  Date: {date_str}")
         print(f"  Table: {settings.full_stage1_table}")
-        print(f"  Query: SELECT DISTINCT farm_id FROM ... WHERE DATE(processing_timestamp) = '{date_str}'")
         
-        try:
-            print(f"  Step 1: Getting connection...")
-            conn = self.connection
-            print(f"  Step 2: Creating cursor...")
+        def execute_query(conn):
+            print(f"  Executing query...")
             with conn.cursor() as cursor:
-                print(f"  Step 3: Executing query...")
                 cursor.execute(query)
-                print(f"  Step 4: Fetching results...")
                 results = cursor.fetchall()
                 print(f"  ✓ SUCCESS: Fetched {len(results)} farms")
                 
                 farms = []
                 for row in results:
-                    farm_id = row[0]  # First column
+                    farm_id = row[0]
                     farm_name = farm_mapping.get(farm_id, farm_id)
                     farms.append((farm_name, farm_id))
                 
-                # Sort by display name
                 farms.sort(key=lambda x: x[0])
                 return [("All", "All")] + farms
+        
+        try:
+            return self._execute_with_retry(execute_query)
         except Exception as e:
             print(f"  ✗ ERROR fetching farms!")
             print(f"  Error type: {type(e).__name__}")
             print(f"  Error message: {str(e)}")
             import traceback
-            print(f"  Full traceback:")
             traceback.print_exc()
             print(f"=" * 50)
             return [("All", "All")]
@@ -127,21 +174,23 @@ class DatabricksQueryService:
         LIMIT 100
         """
         
-        try:
-            with self.connection.cursor() as cursor:
+        def execute_query(conn):
+            with conn.cursor() as cursor:
                 cursor.execute(query)
                 results = cursor.fetchall()
                 
                 cameras = []
                 for row in results:
-                    camera_id = row[0]  # First column
+                    camera_id = row[0]
                     camera_info = camera_mapping.get(camera_id, {})
                     camera_name = camera_info.get('name', camera_id)
                     cameras.append((camera_name, camera_id))
                 
-                # Sort by display name
                 cameras.sort(key=lambda x: x[0])
                 return [("All", "All")] + cameras
+        
+        try:
+            return self._execute_with_retry(execute_query)
         except Exception as e:
             print(f"Error fetching cameras: {e}")
             import traceback
@@ -311,14 +360,20 @@ class DatabricksQueryService:
         print(f"  Where clause: {where_clause}")
         print(f"  Limit: {limit}")
         
-        try:
-            print(f"  Step 1: Getting connection...")
-            conn = self.connection
-            print(f"  Step 2: Creating cursor...")
+        print(f"")
+        print(f"=" * 50)
+        print(f"QUERY: query_stage1_stage2_linked")
+        print(f"=" * 50)
+        print(f"  Date: {date_str}")
+        print(f"  Farm: {farm_id}")
+        print(f"  Camera: {camera_id}")
+        print(f"  Where clause: {where_clause}")
+        print(f"  Limit: {limit}")
+        
+        def execute_query(conn):
+            print(f"  Executing complex JOIN query...")
             with conn.cursor() as cursor:
-                print(f"  Step 3: Executing complex JOIN query...")
                 cursor.execute(query)
-                print(f"  Step 4: Fetching results...")
                 
                 # Fetch column names
                 columns = [desc[0] for desc in cursor.description]
@@ -333,12 +388,14 @@ class DatabricksQueryService:
                 print(f"  Columns: {list(df.columns)[:5]}..." if len(df.columns) > 5 else f"  Columns: {list(df.columns)}")
                 print(f"=" * 50)
                 return df
+        
+        try:
+            return self._execute_with_retry(execute_query)
         except Exception as e:
             print(f"  ✗ ERROR querying data!")
             print(f"  Error type: {type(e).__name__}")
             print(f"  Error message: {str(e)}")
             import traceback
-            print(f"  Full traceback:")
             traceback.print_exc()
             print(f"=" * 50)
             return pd.DataFrame()
