@@ -144,6 +144,10 @@ def run_query(
         if df.empty:
             return pd.DataFrame(), f"No results found. Filters: {filter_summary}"
         
+        # Clear row cache when new query results are loaded
+        app_state.row_cache.clear()
+        app_state.last_selected_row = None
+        
         display_df = format_results_for_display(df)
         print(f"DEBUG run_query: display_df shape={display_df.shape}, columns={list(display_df.columns)}")
         status = f"Found {len(df)} results | {filter_summary}"
@@ -171,6 +175,15 @@ def get_row_details(evt: gr.SelectData) -> Tuple[Optional[str], Optional[str], s
     
     try:
         row_idx = evt.index[0]
+        
+        # Check if this is the same row being selected again (prevent redundant downloads)
+        if row_idx == app_state.last_selected_row and row_idx in app_state.row_cache:
+            print(f"Using cached data for row {row_idx}")
+            return app_state.row_cache[row_idx]
+        
+        # Update last selected row
+        app_state.last_selected_row = row_idx
+        
         row = app_state.query_results.iloc[row_idx]
         
         # Get camera and farm display names
@@ -273,7 +286,11 @@ def get_row_details(evt: gr.SelectData) -> Tuple[Optional[str], Optional[str], s
         if pd.notna(stage2_id) and pd.notna(video_gcs):
             video_path = media_service.download_video_to_temp(video_gcs)
         
-        return gif_path, video_path, details_text
+        # Cache the result
+        result = (gif_path, video_path, details_text)
+        app_state.row_cache[row_idx] = result
+        
+        return result
         
     except Exception as e:
         return None, None, f"Error loading details: {str(e)}"
