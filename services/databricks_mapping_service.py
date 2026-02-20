@@ -8,6 +8,8 @@ from config.settings import settings
 class DatabricksMappingService:
     """Service for loading camera/farm/tenant mappings from Databricks tables."""
     
+    MAPPING_SCHEMA = "cv_logs"
+    
     def __init__(self):
         """Initialize the mapping service."""
         self._camera_mapping: Dict[str, Dict[str, str]] = {}
@@ -36,7 +38,7 @@ class DatabricksMappingService:
             with conn.cursor() as cursor:
                 cursor.execute(f"""
                     SELECT tenant_id, tenant_name, tenant_ui_url, tenant_slug
-                    FROM {settings.catalog_name}.{settings.schema_name}.tenant_map
+                    FROM {settings.catalog_name}.{self.MAPPING_SCHEMA}.tenant_map
                     WHERE tenant_id IS NOT NULL
                       AND tenant_id != 'tenant_id'
                 """)
@@ -55,7 +57,7 @@ class DatabricksMappingService:
             with conn.cursor() as cursor:
                 cursor.execute(f"""
                     SELECT farm_id, farm_name, tenant_id
-                    FROM {settings.catalog_name}.{settings.schema_name}.farm_map
+                    FROM {settings.catalog_name}.{self.MAPPING_SCHEMA}.farm_map
                     WHERE farm_id IS NOT NULL
                       AND farm_id != 'farm_id'
                 """)
@@ -76,7 +78,7 @@ class DatabricksMappingService:
             with conn.cursor() as cursor:
                 cursor.execute(f"""
                     SELECT camera_id, camera_name
-                    FROM {settings.catalog_name}.{settings.schema_name}.farm_camera_map
+                    FROM {settings.catalog_name}.{self.MAPPING_SCHEMA}.farm_camera_map
                     WHERE camera_id IS NOT NULL
                       AND camera_id != 'camera_id'
                 """)
@@ -93,6 +95,8 @@ class DatabricksMappingService:
             
         except Exception as e:
             print(f"Warning: Error loading mappings from Databricks: {e}")
+            import traceback
+            traceback.print_exc()
             print("  Continuing with empty mappings...")
         
         self._camera_mapping = camera_mapping
