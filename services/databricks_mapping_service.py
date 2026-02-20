@@ -76,7 +76,7 @@ class DatabricksMappingService:
             with conn.cursor() as cursor:
                 cursor.execute(f"""
                     SELECT camera_id, camera_name
-                    FROM {settings.catalog_name}.{settings.schema_name}.farm_camer_map
+                    FROM {settings.catalog_name}.{settings.schema_name}.farm_camera_map
                     WHERE camera_id IS NOT NULL
                       AND camera_id != 'camera_id'
                 """)
