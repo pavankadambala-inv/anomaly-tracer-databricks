@@ -14,7 +14,7 @@ if str(_parent) not in sys.path:
 
 from config.settings import settings
 from infrastructure.databricks_client import get_databricks_connection
-from services.camera_config import camera_config_service
+from services.databricks_mapping_service import databricks_mapping_service
 
 
 class DatabricksQueryService:
@@ -94,17 +94,57 @@ class DatabricksQueryService:
         # Should not reach here, but just in case
         raise last_error
     
-    def get_available_farms(self, date_str: str) -> List[Tuple[str, str]]:
+    def get_available_tenants(self, date_str: str) -> List[Tuple[str, str]]:
+        """Get list of tenants that have data on the given date."""
+        farm_mapping = databricks_mapping_service.get_farm_mapping()
+        
+        query = f"""
+        SELECT DISTINCT farm_id
+        FROM {settings.full_stage1_table}
+        WHERE DATE(processing_timestamp) = '{date_str}'
+          AND farm_id IS NOT NULL
+        ORDER BY farm_id
         """
-        Get list of farm IDs that have data on the given date.
+        
+        def execute_query(conn):
+            with conn.cursor() as cursor:
+                cursor.execute(query)
+                results = cursor.fetchall()
+                
+                tenant_set = set()
+                for row in results:
+                    farm_id = row[0]
+                    farm_info = farm_mapping.get(farm_id, {})
+                    tenant_id = farm_info.get('tenant_id')
+                    tenant_name = farm_info.get('tenant_name', 'Unknown')
+                    if tenant_id:
+                        tenant_set.add((tenant_name, tenant_id))
+                
+                tenants = sorted(list(tenant_set), key=lambda x: x[0])
+                print(f"  ✓ Found {len(tenants)} tenants")
+                return [("All", "All")] + tenants
+        
+        try:
+            return self._execute_with_retry(execute_query)
+        except Exception as e:
+            print(f"  ✗ ERROR fetching tenants: {e}")
+            import traceback
+            traceback.print_exc()
+            return [("All", "All")]
+    
+    def get_available_farms(self, date_str: str, tenant_id: Optional[str] = None) -> List[Tuple[str, str]]:
+        """
+        Get list of farm IDs that have data on the given date, optionally filtered by tenant.
         
         Args:
             date_str: Date in YYYY-MM-DD format.
+            tenant_id: Optional tenant ID to filter by.
             
         Returns:
             List of tuples (display_name, farm_id) for dropdown choices.
         """
-        farm_mapping = camera_config_service.get_farm_mapping()
+        farm_mapping = databricks_mapping_service.get_farm_mapping()
+        actual_tenant_id = tenant_id[1] if isinstance(tenant_id, tuple) else tenant_id
         
         query = f"""
         SELECT DISTINCT farm_id
@@ -132,7 +172,13 @@ class DatabricksQueryService:
                 farms = []
                 for row in results:
                     farm_id = row[0]
-                    farm_name = farm_mapping.get(farm_id, farm_id)
+                    farm_info = farm_mapping.get(farm_id, {})
+                    farm_name = farm_info.get('name', farm_id)
+                    
+                    if actual_tenant_id and actual_tenant_id != "All":
+                        if farm_info.get('tenant_id') != actual_tenant_id:
+                            continue
+                    
                     farms.append((farm_name, farm_id))
                 
                 farms.sort(key=lambda x: x[0])
@@ -164,7 +210,7 @@ class DatabricksQueryService:
         Returns:
             List of tuples (display_name, camera_id) for dropdown choices.
         """
-        camera_mapping = camera_config_service.get_camera_mapping()
+        camera_mapping = databricks_mapping_service.get_camera_mapping()
         
         # Extract actual farm_id from tuple if needed
         actual_farm_id = farm_id[1] if isinstance(farm_id, tuple) else farm_id
@@ -209,6 +255,7 @@ class DatabricksQueryService:
         date_str: str,
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
+        tenant_id: Optional[str] = None,
         farm_id: Optional[str] = None,
         camera_id: Optional[str] = None,
         should_forward_only: bool = False,
@@ -234,6 +281,19 @@ class DatabricksQueryService:
         """
         # Build dynamic filters
         filters = []
+        
+        # Add tenant filter (filter farms by tenant_id)
+        if tenant_id and tenant_id != "All":
+            farm_mapping = databricks_mapping_service.get_farm_mapping()
+            tenant_farm_ids = [
+                fid for fid, finfo in farm_mapping.items()
+                if finfo.get('tenant_id') == tenant_id
+            ]
+            if tenant_farm_ids:
+                farm_ids_str = "', '".join(tenant_farm_ids)
+                filters.append(f"s1.farm_id IN ('{farm_ids_str}')")
+            else:
+                filters.append("1=0")
         
         # Add time range filter using HOUR and MINUTE extraction
         if start_time:
@@ -362,16 +422,7 @@ class DatabricksQueryService:
         print(f"QUERY: query_stage1_stage2_linked")
         print(f"=" * 50)
         print(f"  Date: {date_str}")
-        print(f"  Farm: {farm_id}")
-        print(f"  Camera: {camera_id}")
-        print(f"  Where clause: {where_clause}")
-        print(f"  Limit: {limit}")
-        
-        print(f"")
-        print(f"=" * 50)
-        print(f"QUERY: query_stage1_stage2_linked")
-        print(f"=" * 50)
-        print(f"  Date: {date_str}")
+        print(f"  Tenant: {tenant_id}")
         print(f"  Farm: {farm_id}")
         print(f"  Camera: {camera_id}")
         print(f"  Where clause: {where_clause}")

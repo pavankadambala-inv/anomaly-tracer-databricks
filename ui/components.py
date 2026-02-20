@@ -4,7 +4,7 @@ from datetime import datetime
 
 import gradio as gr
 
-from ui.handlers import run_query, get_row_details, load_filters, update_cameras_on_farm_change
+from ui.handlers import run_query, get_row_details, load_filters, update_cameras_on_farm_change, update_farms_on_tenant_change
 
 
 def create_app() -> gr.Blocks:
@@ -17,30 +17,7 @@ def create_app() -> gr.Blocks:
     # Get today's date as default
     today = datetime.now().strftime("%Y-%m-%d")
     
-    with gr.Blocks(
-        title="CV Inference Traceability Dashboard",
-        theme=gr.themes.Soft(
-            primary_hue="blue",
-            secondary_hue="gray",
-        ),
-        css="""
-        .results-table {
-            font-size: 12px;
-        }
-        #details-box textarea,
-        #details-box .wrap textarea,
-        #details-box > div > textarea {
-            background: transparent !important;
-            color: #ffffff !important;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
-            font-size: 14px !important;
-            font-weight: 600 !important;
-            padding: 16px !important;
-            border: none !important;
-            line-height: 1.6 !important;
-        }
-        """
-    ) as app:
+    with gr.Blocks(title="CV Inference Traceability Dashboard") as app:
         
         gr.Markdown("""
         # 🐄 CV Inference Traceability Dashboard
@@ -71,16 +48,25 @@ def create_app() -> gr.Blocks:
                     value="",
                     placeholder="e.g. 17:00 (leave empty for all)"
                 )
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                tenant_dropdown = gr.Dropdown(
+                    label="🏢 Tenant",
+                    choices=["All"],
+                    value="All",
+                    interactive=True
+                )
             with gr.Column(scale=1):
                 farm_dropdown = gr.Dropdown(
-                    label="🏠 Farm ID",
+                    label="🏠 Farm",
                     choices=["All"],
                     value="All",
                     interactive=True
                 )
             with gr.Column(scale=1):
                 camera_dropdown = gr.Dropdown(
-                    label="📷 Camera ID",
+                    label="📷 Camera",
                     choices=["All"],
                     value="All",
                     interactive=True
@@ -162,7 +148,14 @@ def create_app() -> gr.Blocks:
         load_filters_btn.click(
             fn=load_filters,
             inputs=[date_picker],
-            outputs=[farm_dropdown, camera_dropdown, status_text]
+            outputs=[tenant_dropdown, farm_dropdown, camera_dropdown, status_text]
+        )
+        
+        # Update farms when tenant changes
+        tenant_dropdown.change(
+            fn=update_farms_on_tenant_change,
+            inputs=[date_picker, tenant_dropdown],
+            outputs=[farm_dropdown, camera_dropdown]
         )
         
         # Update cameras when farm changes
@@ -175,7 +168,7 @@ def create_app() -> gr.Blocks:
         # Run query button
         query_btn.click(
             fn=run_query,
-            inputs=[date_picker, start_time, end_time, farm_dropdown, camera_dropdown, 
+            inputs=[date_picker, start_time, end_time, tenant_dropdown, farm_dropdown, camera_dropdown, 
                     forward_only],
             outputs=[results_table, status_text]
         )
@@ -201,5 +194,29 @@ def create_app() -> gr.Blocks:
         
         **Note**: Stage 2 columns show "N/A" for events that weren't forwarded for video analysis.
         """)
+    
+    try:
+        app.theme = gr.themes.Soft(primary_hue="blue", secondary_hue="gray")
+    except Exception:
+        pass
+    
+    try:
+        app.css = """
+        .results-table { font-size: 12px; }
+        #details-box textarea,
+        #details-box .wrap textarea,
+        #details-box > div > textarea {
+            background: transparent !important;
+            color: #ffffff !important;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            padding: 16px !important;
+            border: none !important;
+            line-height: 1.6 !important;
+        }
+        """
+    except Exception:
+        pass
     
     return app

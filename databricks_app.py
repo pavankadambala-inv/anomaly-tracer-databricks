@@ -75,6 +75,7 @@ except Exception as e:
 from config import settings
 from config.secrets_loader import load_secrets_from_yaml, ensure_required_secrets
 from services import camera_config_service
+from services.databricks_mapping_service import databricks_mapping_service
 from ui import create_app
 
 
@@ -192,14 +193,14 @@ def main():
     configure_gcp_credentials()
     print()
     
-    # Load camera configuration
-    print("Loading camera configuration...")
+    # Load mappings from Databricks tables
+    print("Loading camera/farm/tenant mappings from Databricks...")
     try:
-        camera_config_service.load()
-        print(f"✓ Loaded camera configuration")
+        cam_map, farm_map, tenant_map = databricks_mapping_service.load()
+        print(f"✓ Loaded mappings: {len(tenant_map)} tenants, {len(farm_map)} farms, {len(cam_map)} cameras")
     except Exception as e:
-        print(f"Warning: Could not load camera config: {e}")
-        print("  (Camera names will show as IDs)")
+        print(f"Warning: Could not load mappings: {e}")
+        print("  (Names will show as IDs)")
     print()
     
     # Create and launch the app

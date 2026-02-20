@@ -10,7 +10,7 @@ _parent = Path(__file__).resolve().parent.parent
 if str(_parent) not in sys.path:
     sys.path.insert(0, str(_parent))
 
-from services import camera_config_service
+from services.databricks_mapping_service import databricks_mapping_service
 
 
 def format_results_for_display(df: pd.DataFrame) -> pd.DataFrame:
@@ -26,9 +26,8 @@ def format_results_for_display(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     
-    # Load camera config for name mapping
-    camera_mapping = camera_config_service.get_camera_mapping()
-    farm_mapping = camera_config_service.get_farm_mapping()
+    camera_mapping = databricks_mapping_service.get_camera_mapping()
+    farm_mapping = databricks_mapping_service.get_farm_mapping()
     
     # Create a copy to work with
     result = df.copy()
@@ -36,10 +35,9 @@ def format_results_for_display(df: pd.DataFrame) -> pd.DataFrame:
     # Map farm_id to farm name
     if 'farm_id' in result.columns:
         result['Farm'] = result['farm_id'].apply(
-            lambda x: farm_mapping.get(x, x) if pd.notna(x) else "N/A"
+            lambda x: farm_mapping.get(x, {}).get('name', x) if pd.notna(x) else "N/A"
         )
     
-    # Map camera_id to camera name
     if 'camera_id' in result.columns:
         result['Camera'] = result['camera_id'].apply(
             lambda x: camera_mapping.get(x, {}).get('name', x) if pd.notna(x) else "N/A"

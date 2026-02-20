@@ -11,6 +11,7 @@ if str(_parent) not in sys.path:
 # Import settings to check platform
 from config.settings import settings
 from services.camera_config import CameraConfigService, camera_config_service
+from services.databricks_mapping_service import DatabricksMappingService, databricks_mapping_service
 from services.media_service import MediaService, media_service
 
 # Import the appropriate query service based on platform
@@ -23,6 +24,8 @@ else:
 __all__ = [
     "CameraConfigService",
     "camera_config_service",
+    "DatabricksMappingService",
+    "databricks_mapping_service",
     "QueryService", 
     "query_service",
     "MediaService",

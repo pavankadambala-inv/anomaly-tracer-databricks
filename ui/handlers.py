@@ -13,7 +13,8 @@ _parent = Path(__file__).resolve().parent.parent
 if str(_parent) not in sys.path:
     sys.path.insert(0, str(_parent))
 
-from services import camera_config_service, query_service, media_service
+from services import query_service, media_service
+from services.databricks_mapping_service import databricks_mapping_service
 from ui.formatters import format_results_for_display
 from ui.state import app_state
 
@@ -43,22 +44,35 @@ def _extract_dropdown_value(value: Any) -> Optional[str]:
     return actual_str
 
 
-def load_filters(date_str: str) -> Tuple[gr.Dropdown, gr.Dropdown, str]:
+def load_filters(date_str: str) -> Tuple[gr.Dropdown, gr.Dropdown, gr.Dropdown, str]:
     """
-    Load available farms and cameras for a given date.
+    Load available tenants, farms, and cameras for a given date.
     
     Args:
         date_str: Date in YYYY-MM-DD format.
         
     Returns:
-        Tuple of (farms_dropdown, cameras_dropdown, status_message)
+        Tuple of (tenants_dropdown, farms_dropdown, cameras_dropdown, status_message)
     """
+    tenants = query_service.get_available_tenants(date_str)
     farms = query_service.get_available_farms(date_str)
+    cameras = query_service.get_available_cameras(date_str)
+    return (
+        gr.Dropdown(choices=tenants, value="All"),
+        gr.Dropdown(choices=farms, value="All"),
+        gr.Dropdown(choices=cameras, value="All"),
+        f"Loaded {len(tenants)-1} tenants, {len(farms)-1} farms, {len(cameras)-1} cameras for {date_str}"
+    )
+
+
+def update_farms_on_tenant_change(date_str: str, tenant_id: str) -> Tuple[gr.Dropdown, gr.Dropdown]:
+    """Update farm and camera dropdowns when tenant selection changes."""
+    actual_tenant_id = _extract_dropdown_value(tenant_id)
+    farms = query_service.get_available_farms(date_str, actual_tenant_id)
     cameras = query_service.get_available_cameras(date_str)
     return (
         gr.Dropdown(choices=farms, value="All"),
         gr.Dropdown(choices=cameras, value="All"),
-        f"Loaded {len(farms)-1} farms, {len(cameras)-1} cameras for {date_str}"
     )
 
 
@@ -82,6 +96,7 @@ def run_query(
     date_str: str,
     start_time: str,
     end_time: str,
+    tenant_id: str,
     farm_id: str,
     camera_id: str,
     should_forward_only: bool
@@ -100,15 +115,14 @@ def run_query(
     Returns:
         Tuple of (formatted_dataframe, status_message)
     """
-    # Load camera config for display names
-    camera_mapping = camera_config_service.get_camera_mapping()
-    farm_mapping = camera_config_service.get_farm_mapping()
+    camera_mapping = databricks_mapping_service.get_camera_mapping()
+    farm_mapping = databricks_mapping_service.get_farm_mapping()
     
-    # Extract actual IDs (handle both string and tuple formats from dropdown)
+    actual_tenant_id = _extract_dropdown_value(tenant_id)
     actual_farm_id = _extract_dropdown_value(farm_id)
     actual_camera_id = _extract_dropdown_value(camera_id)
     
-    # Debug logging
+    print(f"DEBUG run_query: tenant_id={tenant_id!r} -> {actual_tenant_id!r}")
     print(f"DEBUG run_query: farm_id={farm_id!r} -> {actual_farm_id!r}")
     print(f"DEBUG run_query: camera_id={camera_id!r} -> {actual_camera_id!r}")
     
@@ -117,6 +131,7 @@ def run_query(
             date_str=date_str,
             start_time=start_time.strip() if start_time.strip() else None,
             end_time=end_time.strip() if end_time.strip() else None,
+            tenant_id=actual_tenant_id,
             farm_id=actual_farm_id,
             camera_id=actual_camera_id,
             should_forward_only=should_forward_only,
@@ -126,14 +141,17 @@ def run_query(
         # Store in app state for row selection
         app_state.query_results = df
         
-        # Build filter summary for status with display names
         filter_parts = [f"Date: {date_str}"]
         if start_time.strip():
             filter_parts.append(f"From: {start_time}")
         if end_time.strip():
             filter_parts.append(f"To: {end_time}")
+        if actual_tenant_id:
+            tenant_display = databricks_mapping_service.get_tenant_display_name(actual_tenant_id)
+            filter_parts.append(f"Tenant: {tenant_display}")
         if actual_farm_id:
-            farm_display = farm_mapping.get(actual_farm_id, actual_farm_id)
+            farm_info = farm_mapping.get(actual_farm_id, {})
+            farm_display = farm_info.get('name', actual_farm_id)
             filter_parts.append(f"Farm: {farm_display}")
         if actual_camera_id:
             camera_info = camera_mapping.get(actual_camera_id, {})
@@ -189,8 +207,8 @@ def get_row_details(evt: gr.SelectData) -> Tuple[Optional[str], Optional[str], s
         # Get camera and farm display names
         camera_id = row.get('camera_id', '')
         farm_id = row.get('farm_id', '')
-        camera_info = camera_config_service.get_camera_info(camera_id) if camera_id else {'name': 'N/A', 'farm_name': 'N/A'}
-        farm_name = camera_config_service.get_farm_display_name(farm_id) if farm_id else 'N/A'
+        camera_info = databricks_mapping_service.get_camera_info(camera_id) if camera_id else {'name': 'N/A'}
+        farm_name = databricks_mapping_service.get_farm_display_name(farm_id) if farm_id else 'N/A'
         
         # Build details text (plain text format)
         details = []
