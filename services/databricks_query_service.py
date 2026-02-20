@@ -423,7 +423,9 @@ class DatabricksQueryService:
         print(f"  Tenant: {tenant_id}")
         print(f"  Farm: {farm_id}")
         print(f"  Camera: {camera_id}")
-        print(f"  Where clause: {where_clause}")
+        print(f"  S1 filter: {s1_where}")
+        print(f"  S2 filter: {s2_where}")
+        print(f"  Outer filter: {outer_where}")
         print(f"  Limit: {limit}")
         
         def execute_query(conn):
