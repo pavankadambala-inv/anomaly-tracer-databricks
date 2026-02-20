@@ -279,44 +279,53 @@ class DatabricksQueryService:
         Returns:
             DataFrame with linked Stage 1 and Stage 2 results.
         """
-        # Build dynamic filters
-        filters = []
+        # Build filters to push into stage1 CTE for early filtering
+        s1_cte_filters = [f"DATE(processing_timestamp) = '{date_str}'"]
         
-        # Add tenant filter (filter farms by tenant_id)
-        if tenant_id and tenant_id != "All":
-            farm_mapping = databricks_mapping_service.get_farm_mapping()
+        # Determine effective farm filter: specific farm > tenant farms
+        effective_farm_ids = None
+        if farm_id and farm_id != "All":
+            s1_cte_filters.append(f"farm_id = '{farm_id}'")
+            effective_farm_ids = [farm_id]
+        elif tenant_id and tenant_id != "All":
+            farm_mapping_data = databricks_mapping_service.get_farm_mapping()
             tenant_farm_ids = [
-                fid for fid, finfo in farm_mapping.items()
+                fid for fid, finfo in farm_mapping_data.items()
                 if finfo.get('tenant_id') == tenant_id
             ]
             if tenant_farm_ids:
                 farm_ids_str = "', '".join(tenant_farm_ids)
-                filters.append(f"s1.farm_id IN ('{farm_ids_str}')")
+                s1_cte_filters.append(f"farm_id IN ('{farm_ids_str}')")
+                effective_farm_ids = tenant_farm_ids
             else:
-                filters.append("1=0")
-        
-        # Add time range filter using HOUR and MINUTE extraction
-        if start_time:
-            st = start_time if start_time.count(':') == 2 else start_time + ":00"
-            # Convert to comparable time string format (HH:mm:ss)
-            filters.append(f"DATE_FORMAT(s1.stage1_timestamp, 'HH:mm:ss') >= '{st}'")
-        
-        if end_time:
-            et = end_time if end_time.count(':') == 2 else end_time + ":59"
-            filters.append(f"DATE_FORMAT(s1.stage1_timestamp, 'HH:mm:ss') <= '{et}'")
-        
-        if farm_id and farm_id != "All":
-            filters.append(f"s1.farm_id = '{farm_id}'")
+                s1_cte_filters.append("1=0")
         
         if camera_id and camera_id != "All":
-            filters.append(f"s1.camera_id = '{camera_id}'")
+            s1_cte_filters.append(f"camera_id = '{camera_id}'")
         
         if should_forward_only:
-            filters.append("s1.stage1_should_forward = true")
+            s1_cte_filters.append("should_forward = true")
         
-        where_clause = " AND ".join(filters) if filters else "1=1"
+        s1_where = " AND ".join(s1_cte_filters)
         
-        # Databricks SQL syntax (similar to BigQuery but with some differences)
+        # Build outer WHERE for time filters (need aliased columns)
+        outer_filters = []
+        if start_time:
+            st = start_time if start_time.count(':') == 2 else start_time + ":00"
+            outer_filters.append(f"DATE_FORMAT(s1.stage1_timestamp, 'HH:mm:ss') >= '{st}'")
+        if end_time:
+            et = end_time if end_time.count(':') == 2 else end_time + ":59"
+            outer_filters.append(f"DATE_FORMAT(s1.stage1_timestamp, 'HH:mm:ss') <= '{et}'")
+        
+        outer_where = " AND ".join(outer_filters) if outer_filters else "1=1"
+        
+        # Build stage2 CTE filter - push camera filter for faster joins
+        s2_cte_filters = [f"DATE(inference_timestamp) BETWEEN DATE_SUB('{date_str}', 1) AND DATE_ADD('{date_str}', 1)"]
+        if camera_id and camera_id != "All":
+            s2_cte_filters.append(f"camera_id = '{camera_id}'")
+        
+        s2_where = " AND ".join(s2_cte_filters)
+        
         query = f"""
         WITH stage1_data AS (
           SELECT 
@@ -329,18 +338,15 @@ class DatabricksQueryService:
             should_forward AS stage1_should_forward,
             frame_uris,
             frame_uris[0] AS trigger_frame_uri,
-            -- Extract linkage keys from trigger frame
-            -- blk_file = block number + frame offset (e.g., 042_0000015)
             REGEXP_EXTRACT(frame_uris[0], '/(\\\\d{{3}}_\\\\d{{7}})_', 1) AS blk_file,
             REGEXP_EXTRACT(frame_uris[0], '_(\\\\d{{4}}-\\\\d{{2}}-\\\\d{{2}}T\\\\d{{2}}:\\\\d{{2}}:\\\\d{{2}})', 1) AS frame_timestamp_key,
             probability_animal_husbandry,
             probability_down_cow,
             probability_quick_movements,
             probability_no_event,
-            -- Stage 1 raw response from Gemini (already a string)
             gemini_raw_response AS stage1_raw_response
           FROM {settings.full_stage1_table}
-          WHERE DATE(processing_timestamp) = '{date_str}'
+          WHERE {s1_where}
         ),
         
         stage2_data AS (
@@ -353,19 +359,14 @@ class DatabricksQueryService:
             should_forward AS stage2_should_forward,
             video_gcs_path,
             file_name AS video_filename,
-            -- Extract linkage keys from video filename
-            -- blk_file = block number + frame offset (e.g., 042_0000015)
             REGEXP_EXTRACT(file_name, '^(\\\\d{{3}}_\\\\d{{7}})_', 1) AS blk_file,
             REGEXP_EXTRACT(file_name, '_(\\\\d{{4}}-\\\\d{{2}}-\\\\d{{2}}T\\\\d{{2}}:\\\\d{{2}}:\\\\d{{2}})', 1) AS video_timestamp_key,
-            -- Stage 2 raw response - model_votes is a string, not array
             model_votes AS stage2_raw_response
           FROM {settings.full_stage2_table}
-          WHERE DATE(inference_timestamp) BETWEEN DATE_SUB('{date_str}', 2) 
-                                              AND DATE_ADD('{date_str}', 2)
+          WHERE {s2_where}
         )
         
         SELECT 
-          -- Stage 1 Info
           s1.session_id,
           s1.farm_id,
           s1.camera_id,
@@ -382,7 +383,6 @@ class DatabricksQueryService:
           s1.probability_no_event,
           s1.stage1_raw_response,
           
-          -- Stage 2 Info (may be NULL)
           s2.stage2_inference_id,
           s2.stage2_timestamp,
           s2.stage2_classification,
@@ -392,11 +392,9 @@ class DatabricksQueryService:
           s2.video_filename,
           s2.stage2_raw_response,
           
-          -- Linkage keys
           s1.blk_file,
           s1.frame_timestamp_key AS event_timestamp,
           
-          -- Derived video path (fallback if Stage 2 missing)
           CASE 
             WHEN s2.video_gcs_path IS NOT NULL THEN s2.video_gcs_path
             ELSE REGEXP_REPLACE(
@@ -408,10 +406,10 @@ class DatabricksQueryService:
         FROM stage1_data s1
         LEFT JOIN stage2_data s2
           ON s1.camera_id = s2.camera_id
-          AND s1.blk_file = s2.blk_file            -- Match on block number + frame offset
+          AND s1.blk_file = s2.blk_file
           AND s1.frame_timestamp_key = s2.video_timestamp_key
         
-        WHERE {where_clause}
+        WHERE {outer_where}
         
         ORDER BY s1.stage1_timestamp DESC
         LIMIT {limit}
